@@ -63,5 +63,9 @@ export interface Profile {
   github: string;
   resumePath: string;
   workAuthorization: string;
-  [key: string]: string;
+  location?: string;
+  currentRole?: string;
+  website?: string;
+  pronouns?: string;
+  [key: string]: string | undefined;
 }

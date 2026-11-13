@@ -445,7 +445,7 @@ export type FillProgress = (action: string, detail: string) => void;
 /** Opens the form, fills what it can, and STOPS before submit. Returns the pending fill_form proposal. */
 export async function fillForm(url: string, override: Record<string, string> = {}, progress: FillProgress = () => {}): Promise<Proposal> {
   await closeStalePages();
-  const profile = { ...readProfile(), ...override } as Profile;
+  const profile = { ...(await readProfile()), ...override } as Profile;
   const page = await newPage();
   try {
     progress("goto", `Opening ${url}`);

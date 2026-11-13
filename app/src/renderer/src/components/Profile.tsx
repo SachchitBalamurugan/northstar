@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode, type KeyboardEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { User, X } from "lucide-react";
-import { useProfile, STATUS_LABELS, contextLine, type Profile, type Status } from "../profile";
+import { useProfile, STATUS_LABELS, contextLine, WORK_AUTH_OPTIONS, type Profile, type Status } from "../profile";
 import { PrimaryButton, Eyebrow, TextLink } from "./ui";
 
 const initials = (name: string) =>
@@ -177,6 +177,29 @@ export function ProfilePanel() {
                       ))}
                     </div>
                   )}
+                </div>
+
+                <div className="flex flex-col gap-4 pt-2">
+                  <span className="text-[11.5px] uppercase tracking-[0.12em] text-muted">Applications</span>
+                  <p className="-mt-2 text-[12.5px] leading-relaxed text-faint">Used to fill job and event forms for you. Nothing is submitted without your OK.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Email"><input className={inputCls} type="email" value={draft.email} placeholder="you@berkeley.edu" onChange={e => set("email", e.target.value)} /></Field>
+                    <Field label="Phone"><input className={inputCls} type="tel" value={draft.phone} placeholder="(510) 555-0123" onChange={e => set("phone", e.target.value)} /></Field>
+                    <Field label="GPA"><input className={inputCls} value={draft.gpa} placeholder="3.8" onChange={e => set("gpa", e.target.value)} /></Field>
+                    <Field label="Grad year"><input className={inputCls} value={draft.gradYear} placeholder="2028" onChange={e => set("gradYear", e.target.value)} /></Field>
+                  </div>
+                  <Field label="LinkedIn"><input className={inputCls} value={draft.linkedin} placeholder="https://linkedin.com/in/..." onChange={e => set("linkedin", e.target.value)} /></Field>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="GitHub"><input className={inputCls} value={draft.github} placeholder="https://github.com/..." onChange={e => set("github", e.target.value)} /></Field>
+                    <Field label="Website"><input className={inputCls} value={draft.website} placeholder="https://..." onChange={e => set("website", e.target.value)} /></Field>
+                  </div>
+                  <Field label="Work authorization">
+                    <select className={inputCls} value={draft.workAuthorization} onChange={e => set("workAuthorization", e.target.value)}>
+                      <option value="" className="bg-[#0B0B0D]">Not set</option>
+                      {WORK_AUTH_OPTIONS.map(o => <option key={o} value={o} className="bg-[#0B0B0D]">{o}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Resume (full path to PDF)"><input className={inputCls} value={draft.resumePath} placeholder={"C:\\Users\\you\\Documents\\resume.pdf"} onChange={e => set("resumePath", e.target.value)} /></Field>
                 </div>
 
                 <Field label="Goals">

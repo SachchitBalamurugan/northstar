@@ -19,12 +19,25 @@ export interface Profile {
   interests: string[];       // ["robotics", "hackathons"]
   goals: string;             // free text
   context: string;           // anything else the AI should know
+  // Applications (used by the form filler)
+  email: string;
+  phone: string;
+  gpa: string;
+  gradYear: string;
+  linkedin: string;
+  github: string;
+  website: string;
+  workAuthorization: string; // one of WORK_AUTH_OPTIONS or ""
+  resumePath: string;        // full local path to resume PDF
   updatedAt?: string;
 }
 
 export const EMPTY_PROFILE: Profile = {
   name: "", statuses: [], school: "", program: "", work: "", location: "", interests: [], goals: "", context: "",
+  email: "", phone: "", gpa: "", gradYear: "", linkedin: "", github: "", website: "", workAuthorization: "", resumePath: "",
 };
+
+export const WORK_AUTH_OPTIONS = ["US citizen / permanent resident", "Authorized (visa)", "Needs sponsorship"] as const;
 
 const KEY = "ns.profile";
 const load = (): Profile => { try { return { ...EMPTY_PROFILE, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch { return EMPTY_PROFILE; } };
@@ -61,6 +74,14 @@ export function toMarkdown(p: Profile): string {
   const loc = locationHint(p); if (loc) L.push(`- Location: ${loc}. Prefer events and opportunities here.`);
   if (p.interests.length) L.push(`- Interests: ${p.interests.join(", ")}`);
   if (p.goals.trim()) L.push(`- Goals: ${p.goals.trim().replace(/\n+/g, " ")}`);
+  if (p.email) L.push(`- Email: ${p.email}`);
+  if (p.phone) L.push(`- Phone: ${p.phone}`);
+  if (p.gpa) L.push(`- GPA: ${p.gpa}`);
+  if (p.gradYear) L.push(`- Graduation year: ${p.gradYear}`);
+  if (p.linkedin) L.push(`- LinkedIn: ${p.linkedin}`);
+  if (p.github) L.push(`- GitHub: ${p.github}`);
+  if (p.website) L.push(`- Website: ${p.website}`);
+  if (p.workAuthorization) L.push(`- Work authorization: ${p.workAuthorization}`);
   if (p.context.trim()) for (const line of p.context.trim().split(/\n+/)) L.push(`- ${line.trim().replace(/^[-*]\s*/, "")}`);
   return L.join("\n") + "\n";
 }
@@ -91,5 +112,16 @@ export const useProfile = create<ProfileState>((set) => ({
       });
       set({ sync: r.ok ? "synced" : "local" });
     } catch { set({ sync: "local" }); }
+    // Also hand the application fields to the actions service's form filler (best effort).
+    const parts = profile.name.trim().split(/\s+/).filter(Boolean);
+    void fetch(`${SERVICES.actions}/profile`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(5000),
+      body: JSON.stringify({
+        name: profile.name.trim(), firstName: parts[0] ?? "", lastName: parts.slice(1).join(" "),
+        email: profile.email, phone: profile.phone, school: profile.school, major: profile.program, gpa: profile.gpa,
+        gradYear: profile.gradYear, linkedin: profile.linkedin, github: profile.github, website: profile.website,
+        workAuthorization: profile.workAuthorization, resumePath: profile.resumePath, location: profile.location, currentRole: profile.work,
+      }),
+    }).catch(() => { /* ignore */ });
   },
 }));

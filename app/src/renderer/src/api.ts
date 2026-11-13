@@ -201,8 +201,41 @@ async function calendarViaInbox(instruction: string, onStep: (s: SidekickStep) =
   else step("The inbox service isn't reachable, so I opened Google Calendar with the event filled in. Press Save there.", "done");
 }
 
+/** "fill/apply to https://..." -> actions /fill: opens the form in the user's Chrome, fills it from the profile, pauses before submit. */
+const URL_RE = /https?:\/\/[^\s"'<>)]+/i;
+export const isFillRequest = (s: string) => URL_RE.test(s) && /\b(fill|apply|application|form|sign ?up|register|complete)\b/i.test(s);
+
+async function fillViaActions(instruction: string, onStep: (s: SidekickStep) => void): Promise<void> {
+  let n = 0; const step = (detail: string, action = "act") => onStep({ step: ++n, action, detail });
+  const url = instruction.match(URL_RE)![0].replace(/[.,;:!?]+$/, "");
+  let host = url; try { host = new URL(url).hostname; } catch { /* keep raw */ }
+  step(`Opening ${host} in your Chrome (you stay logged in)…`);
+  try {
+    const r = await fetch(SERVICES.actions + "/fill", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }), signal: AbortSignal.timeout(180_000),
+    });
+    const p = await r.json().catch(() => ({}));
+    if (!r.ok) { step(p?.error ?? `Couldn't fill that form (HTTP ${r.status}).`, "done"); return; }
+    online.actions = true;
+    const fields: { label: string; value: string; confidence?: number }[] = Array.isArray(p?.payload?.fields) ? p.payload.fields : [];
+    const unknown = Array.isArray(p?.payload?.unknown) ? p.payload.unknown.length : 0;
+    const filled = fields.filter(f => f.value != null && String(f.value).trim() !== "").length;
+    const need = fields.length - filled + unknown;
+    step(`Filled ${filled} of ${fields.length + unknown} fields from your profile (${need} need you)`);
+    step("Paused before submitting. Opening Approve so you can check every field…", "done");
+    setTimeout(async () => {
+      const { useUI } = await import("./store");
+      const ui = useUI.getState(); ui.closeCommand(); ui.setScreen("approve");
+    }, 1400);
+  } catch (e) {
+    step(e instanceof Error && e.name === "TimeoutError" ? "Filling took too long and was stopped." : "The actions service isn't reachable, so nothing was filled.", "done");
+  }
+}
+
 export async function runSidekick(instruction: string, onStep: (s: SidekickStep) => void): Promise<void> {
   if (isEmailRequest(instruction)) return composeViaInbox(instruction, onStep);
+  if (isFillRequest(instruction)) return fillViaActions(instruction, onStep);
   if (isCalendarRequest(instruction)) return calendarViaInbox(instruction, onStep);
   try {
     const r = await fetch(SERVICES.actions + "/sidekick", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instruction }) });
