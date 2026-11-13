@@ -22,7 +22,7 @@ const NAV: { id: Screen; label: string }[] = [
   { id: "knowledge", label: "Knowledge" },
 ];
 
-const IRIDESCENT = "conic-gradient(from var(--ns-angle, 0deg), #5B8CFF, #A78BFA, #E879F9, #A78BFA, #5B8CFF)";
+const IRIDESCENT = "conic-gradient(from var(--ns-angle, 0deg), #FF8A3D, #FF3DA5, #8B5CF6, #3B82F6, #22D3EE, #FF8A3D)";
 
 /** The center "home" tab: iridescent rotating ring + glow, icon, and solid white when active. */
 function DashboardTab({ active, onClick }: { active: boolean; onClick: () => void }) {
@@ -30,7 +30,7 @@ function DashboardTab({ active, onClick }: { active: boolean; onClick: () => voi
     <motion.button onClick={onClick} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}
       className="no-drag relative mx-1.5 isolate" aria-current={active ? "page" : undefined} title="Dashboard: what matters most today">
       {/* soft glow */}
-      <span aria-hidden className={`absolute -inset-1.5 -z-10 rounded-full blur-[10px] transition-opacity duration-300 ${active ? "opacity-50" : "opacity-25"}`}
+      <span aria-hidden className={`absolute -inset-1.5 -z-10 rounded-full blur-[10px] transition-opacity duration-300 ${active ? "opacity-70" : "opacity-40"}`}
         style={{ background: IRIDESCENT, animation: "ns-ring 6s linear infinite" }} />
       {/* rotating iridescent ring */}
       <span aria-hidden className="absolute inset-0 rounded-full p-[1.5px]" style={{ background: IRIDESCENT, animation: "ns-ring 6s linear infinite" }}>

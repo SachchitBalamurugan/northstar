@@ -7,7 +7,7 @@ import { useUI } from "@/store";
 import { LogoMark } from "@/components/ui";
 
 const SUGGESTIONS = ["Fill my Stripe application", "Unsubscribe from promo emails", "Find the CS 201 syllabus"];
-const EDGE = "linear-gradient(90deg,#5B8CFF,#A78BFA,#E879F9)";
+const EDGE = "linear-gradient(90deg,#FF8A3D,#FF3DA5,#8B5CF6,#3B82F6)";
 
 export default function CommandBar() {
   const { commandOpen, commandPrefill, closeCommand } = useUI();

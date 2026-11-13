@@ -144,7 +144,7 @@ export default function Now() {
         <Window title="Today" icon={<CalendarDays size={16} />} tag="AUTO-PLANNED" meta={`${hoursLeft}h left today`}>
           <div className="px-6 pt-6 pb-5">
             <div className="relative h-1 w-full rounded-full bg-white/[0.06]" aria-label={`${Math.round(pct * 100)}% of the day gone`}>
-              <div className="h-full rounded-full bg-[linear-gradient(90deg,#5B8CFF,#A78BFA)] transition-[width] duration-200" style={{ width: `${pct * 100}%` }} />
+              <div className="h-full rounded-full bg-[linear-gradient(90deg,#FF8A3D,#E26D45)] transition-[width] duration-200" style={{ width: `${pct * 100}%` }} />
               <span className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_12px_rgba(226,109,69,0.9)]"
                 style={{ left: `${pct * 100}%` }} />
             </div>
