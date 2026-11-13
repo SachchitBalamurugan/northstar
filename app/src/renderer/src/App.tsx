@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useAnimationControls } from "framer-motion";
 import { useUI, type Screen } from "./store";
 import { checkHealth, getPendingProposals, type ServiceName } from "./api";
 import { AmbientGlow, GlassPill, LogoMark, PrimaryButton, Kbd } from "./components/ui";
+import Dashboard, { AskBar } from "./screens/Dashboard";
 import Now from "./screens/Now";
 import Approve from "./screens/Approve";
 import Inbox from "./screens/Inbox";
@@ -12,7 +13,8 @@ import Onboarding from "./screens/Onboarding";
 import CommandBar from "./screens/CommandBar";
 
 const NAV: { id: Screen; label: string }[] = [
-  { id: "now", label: "Now" },
+  { id: "dashboard", label: "Dashboard" },
+  { id: "now", label: "Focus" },
   { id: "approve", label: "Approve" },
   { id: "inbox", label: "Inbox" },
   { id: "knowledge", label: "Knowledge" },
@@ -86,7 +88,7 @@ export default function App() {
       <AmbientGlow />
       {/* Top bar: logo · glass pill nav · primary CTA. Right side kept clear for our window controls. */}
       <header className="drag relative z-20 flex h-[84px] shrink-0 items-center px-8 pr-[132px]">
-        <button onClick={() => setScreen("now")} className="no-drag flex items-center gap-3">
+        <button onClick={() => setScreen("dashboard")} className="no-drag flex items-center gap-3">
           <LogoMark />
           <span className="display text-[24px] tracking-[-0.03em]">Northstar</span>
         </button>
@@ -124,6 +126,7 @@ export default function App() {
         <AnimatePresence mode="wait">
           <motion.div key={screen} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25, ease: "easeOut" }}
             className="mx-auto max-w-[1120px] px-10 pt-10 pb-24">
+            {screen === "dashboard" && <Dashboard />}
             {screen === "now" && <Now />}
             {screen === "approve" && <Approve />}
             {screen === "inbox" && <Inbox />}
@@ -131,6 +134,7 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
       </main>
+      <AnimatePresence>{screen === "dashboard" && !focusTask && <AskBar key="ask" />}</AnimatePresence>
       <AnimatePresence>{focusTask && <Focus />}</AnimatePresence>
       <CommandBar />
     </>
