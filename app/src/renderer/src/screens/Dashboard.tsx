@@ -14,10 +14,10 @@ const ICON: Record<PriorityKind, typeof Mail> = { focus: Target, email: Mail, ca
 const LABEL: Record<PriorityKind, string> = { focus: "Focus", email: "Email", calendar: "Calendar", application: "Application", task: "Suggestion" };
 // Antigravity-style neon color per kind: text class + icon tile style.
 const NEON: Record<PriorityKind, { text: string; hex: string }> = {
-  focus: { text: "neon-text-pink", hex: "#FF4FD8" }, email: { text: "neon-text-blue", hex: "#4C8DFF" },
-  calendar: { text: "neon-text-green", hex: "#3DDC84" }, application: { text: "neon-text-yellow", hex: "#FFC93C" }, task: { text: "neon-text-violet", hex: "#A78BFA" },
+  focus: { text: "neon-text-pink", hex: "#E879F9" }, email: { text: "neon-text-blue", hex: "#5B8CFF" },
+  calendar: { text: "neon-text-violet", hex: "#A78BFA" }, application: { text: "neon-text-blue", hex: "#5B8CFF" }, task: { text: "neon-text-violet", hex: "#A78BFA" },
 };
-const tile = (k: PriorityKind) => ({ background: `${NEON[k].hex}1F`, boxShadow: `inset 0 0 0 1px ${NEON[k].hex}40, 0 0 14px ${NEON[k].hex}30`, color: NEON[k].hex });
+const tile = (k: PriorityKind) => ({ background: `${NEON[k].hex}17`, boxShadow: `inset 0 0 0 1px ${NEON[k].hex}2E`, color: NEON[k].hex });
 
 const soon = (iso?: string) => !!iso && new Date(iso).getTime() - Date.now() < 48 * 36e5;
 const openUrl = (url: string) => (window.northstar ? window.northstar.openExternal(url) : window.open(url, "_blank", "noopener"));
@@ -132,7 +132,7 @@ export default function Dashboard() {
                   return (
                     <li key={ev.id} className={`flex items-center gap-3 border-b-[0.8px] border-line py-3 last:border-b-0 ${past ? "opacity-40" : ""}`}>
                       <span className="w-16 shrink-0 text-[12.5px] text-muted tabular-nums">{clock(ev.start)}</span>
-                      {ev.northstar && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#3DDC84] shadow-[0_0_8px_#3DDC84]" />}
+                      {ev.northstar && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#A78BFA] shadow-[0_0_6px_#A78BFA]" />}
                       <span className="truncate text-[14px] text-warm">{ev.title.replace(/^◎\s*/, "")}</span>
                     </li>
                   );
@@ -297,8 +297,8 @@ function DayBar() {
     <div className="px-5 pt-4 pb-2">
       <div className="mb-2 flex justify-between text-[11px] text-faint"><span>8a</span><span>{left.toFixed(0)}h left</span><span>11p</span></div>
       <div className="relative h-[3px] rounded-full bg-white/[0.08]">
-        <div className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#4C8DFF] via-[#A78BFA] to-[#FF4FD8] shadow-[0_0_10px_rgba(167,139,250,.6)]" style={{ width: `${pct}%` }} />
-        <div className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_10px_#A78BFA]" style={{ left: `${pct}%` }} />
+        <div className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#5B8CFF] to-[#A78BFA]" style={{ width: `${pct}%` }} />
+        <div className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_8px_rgba(167,139,250,.6)]" style={{ left: `${pct}%` }} />
       </div>
     </div>
   );
@@ -331,7 +331,7 @@ export function AskBar() {
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1], delay: 0.15 }}
         className="pointer-events-auto relative w-full max-w-[680px]">
         {/* soft rainbow halo */}
-        <div aria-hidden className="absolute -inset-[1px] rounded-full bg-[linear-gradient(90deg,#4C8DFF,#A78BFA,#FF4FD8,#FF5C5C,#FFC93C,#3DDC84)] opacity-55 blur-[12px]" />
+        <div aria-hidden className="absolute -inset-[1px] rounded-full bg-[linear-gradient(90deg,#5B8CFF,#A78BFA,#E879F9)] opacity-30 blur-[12px]" />
         <form onSubmit={(e) => { e.preventDefault(); submit(); }}
           onClick={() => ref.current?.focus()}
           className="no-drag relative flex h-[58px] items-center gap-3 rounded-full border-[0.8px] border-white/15 bg-[#0B0B0D]/85 pr-2 pl-5 shadow-[0_20px_60px_rgba(0,0,0,.6)] backdrop-blur-xl">

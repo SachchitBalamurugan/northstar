@@ -22,8 +22,8 @@ const label = (n: string) => n.replace(/\.md$/i, "");
 
 const SOURCES = [
   { icon: <Mail size={16} className="text-[#7AA7FF]" />, label: "Emails", bg: "bg-[#3B82F6]/20" },
-  { icon: <CalendarDays size={16} className="text-[#7CF0B0]" />, label: "Calendar", bg: "bg-[#3DDC84]/20" },
-  { icon: <FileText size={16} className="text-[#FF8CCB]" />, label: "Applications", bg: "bg-[#FF3DA5]/20" },
+  { icon: <CalendarDays size={16} className="text-[#C4B5FD]" />, label: "Calendar", bg: "bg-[#A78BFA]/20" },
+  { icon: <FileText size={16} className="text-[#9DB8FF]" />, label: "Applications", bg: "bg-[#5B8CFF]/20" },
   { icon: <Brain size={16} className="text-[#B9A2FF]" />, label: "Memory", bg: "bg-[#8B5CF6]/20" },
 ];
 
