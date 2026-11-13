@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useAnimationControls } from "framer-motion";
 import { useUI, type Screen } from "./store";
 import { checkHealth, getPendingProposals, type ServiceName } from "./api";
-import { AmbientGlow, GlassPill, LogoMark, PrimaryButton, Kbd } from "./components/ui";
+import { AmbientGlow, GlassPill, LogoMark } from "./components/ui";
+import FloatingHandoff from "./components/FloatingHandoff";
 import Dashboard, { AskBar } from "./screens/Dashboard";
 import Now from "./screens/Now";
 import Approve from "./screens/Approve";
@@ -105,6 +106,7 @@ export default function App() {
   }, []);
 
   const live = Object.values(health).filter(Boolean).length;
+  const dragArea = useRef<HTMLDivElement>(null);
 
   if (!onboarded) return shell(<><AmbientGlow /><div className="drag absolute inset-x-0 top-0 h-12" /><Onboarding /></>);
 
@@ -143,9 +145,6 @@ export default function App() {
               <span key={s} title={`${s}: ${health[s] ? "live" : "demo data"}`} className={`h-1.5 w-1.5 rounded-full ${health[s] ? "bg-emerald-400 shadow-[0_0_8px_#34d399]" : "bg-white/20"}`} />
             ))}
           </span>
-          <PrimaryButton onClick={() => openCommand()} className="h-[44px] px-5 text-[14.3px]">
-            Hand off a task <Kbd>Ctrl Space</Kbd>
-          </PrimaryButton>
         </div>
       </header>
 
@@ -162,6 +161,9 @@ export default function App() {
         </AnimatePresence>
       </main>
       <AnimatePresence>{screen === "dashboard" && !focusTask && <AskBar key="ask" />}</AnimatePresence>
+      {/* Drag area for the floating hand-off button: everything below the top bar, with a small margin. */}
+      <div ref={dragArea} aria-hidden className="pointer-events-none absolute inset-x-4 top-[88px] bottom-4" />
+      {!focusTask && <FloatingHandoff bounds={dragArea} onOpen={() => openCommand()} />}
       <AnimatePresence>{focusTask && <Focus />}</AnimatePresence>
       <CommandBar />
     </>
