@@ -12,13 +12,38 @@ import Focus from "./screens/Focus";
 import Onboarding from "./screens/Onboarding";
 import CommandBar from "./screens/CommandBar";
 
+// Dashboard sits in the center as the hero tab; two tabs on each side.
 const NAV: { id: Screen; label: string }[] = [
-  { id: "dashboard", label: "Dashboard" },
   { id: "now", label: "Focus" },
   { id: "approve", label: "Approve" },
+  { id: "dashboard", label: "Dashboard" },
   { id: "inbox", label: "Inbox" },
   { id: "knowledge", label: "Knowledge" },
 ];
+
+const IRIDESCENT = "conic-gradient(from var(--ns-angle, 0deg), #FF8A3D, #FF3DA5, #8B5CF6, #3B82F6, #22D3EE, #FF8A3D)";
+
+/** The center "home" tab: iridescent rotating ring + glow, icon, and solid white when active. */
+function DashboardTab({ active, onClick }: { active: boolean; onClick: () => void }) {
+  return (
+    <motion.button onClick={onClick} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}
+      className="no-drag relative mx-1.5 isolate" aria-current={active ? "page" : undefined} title="Dashboard: what matters most today">
+      {/* soft glow */}
+      <span aria-hidden className={`absolute -inset-1.5 -z-10 rounded-full blur-[10px] transition-opacity duration-300 ${active ? "opacity-70" : "opacity-40"}`}
+        style={{ background: IRIDESCENT, animation: "ns-ring 6s linear infinite" }} />
+      {/* rotating iridescent ring */}
+      <span aria-hidden className="absolute inset-0 rounded-full p-[1.5px]" style={{ background: IRIDESCENT, animation: "ns-ring 6s linear infinite" }}>
+        <span className={`block h-full w-full rounded-full transition-colors duration-300 ${active ? "bg-white" : "bg-[#0B0B0D]"}`} />
+      </span>
+      <span className={`relative flex h-11 items-center gap-2 px-5 text-[14.5px] font-semibold tracking-[-0.01em] transition-colors duration-300 ${active ? "text-black" : "text-ink"}`}>
+        <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden>
+          <path d="M8 1.5 L9.6 6.4 L14.5 8 L9.6 9.6 L8 14.5 L6.4 9.6 L1.5 8 L6.4 6.4 Z" fill="currentColor" />
+        </svg>
+        Dashboard
+      </span>
+    </motion.button>
+  );
+}
 
 declare global { interface Window { northstar?: import("../../preload/index").NorthstarBridge } }
 
@@ -95,7 +120,9 @@ export default function App() {
 
         <div className="absolute left-1/2 -translate-x-1/2">
           <GlassPill>
-            {NAV.map(({ id, label }) => (
+            {NAV.map(({ id, label }) => id === "dashboard" ? (
+              <DashboardTab key={id} active={screen === "dashboard"} onClick={() => setScreen("dashboard")} />
+            ) : (
               <button key={id} onClick={() => setScreen(id)}
                 className={`relative h-10 rounded-full px-[15px] text-[14.3px] font-medium tracking-[-0.01em] transition-colors duration-200 ${screen === id ? "text-ink" : "text-muted hover:text-ink"}`}>
                 {screen === id && <motion.span layoutId="nav-pill" transition={{ duration: 0.3, ease: "easeOut" }} className="absolute inset-0 rounded-full bg-white/10" />}
