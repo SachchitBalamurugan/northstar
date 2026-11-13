@@ -16,9 +16,10 @@ const LABELS: Record<Proposal["type"], string> = {
   submit_form: "Application", unsubscribe: "Unsubscribe", task: "Suggestion",
 };
 
-type Field = { label: string; value: string; confidence?: number };
+type Field = { label: string; value: string; confidence?: number; selector?: string; ask?: boolean };
+type Answers = Record<string, string>;
 
-function Preview({ p }: { p: Proposal }) {
+function Preview({ p, answers, onAnswer }: { p: Proposal; answers: Answers; onAnswer: (selector: string, value: string) => void }) {
   const pl = p.payload ?? {};
   if (p.type === "send_reply") {
     return (
@@ -50,13 +51,21 @@ function Preview({ p }: { p: Proposal }) {
     );
   }
   if ((p.type === "fill_form" || p.type === "submit_form") && Array.isArray(pl.fields)) {
+    // Required fields the filler would not guess come back in `unknown`; the user answers them here.
+    const asks: Field[] = (Array.isArray(pl.unknown) ? pl.unknown : []).map((u: Field) => ({ label: u.label, value: "", selector: u.selector, ask: true }));
+    const rows = [...asks, ...(pl.fields as Field[])];
     return (
-      <ul className="mt-6 divide-y divide-line rounded-[12px] bg-raised px-5">
-        {(pl.fields as Field[]).map((f) => (
-          <li key={f.label} className="flex items-center justify-between gap-4 py-3">
-            <span className="text-[12px] uppercase tracking-[0.1em] text-faint">{f.label}</span>
+      <ul className="mt-6 max-h-[19rem] divide-y divide-line overflow-y-auto rounded-[12px] bg-raised px-5">
+        {rows.map((f, i) => (
+          <li key={f.selector ?? `${f.label}-${i}`} className="flex items-center justify-between gap-4 py-3">
+            <span className="shrink-0 text-[12px] uppercase tracking-[0.1em] text-faint">{f.label}</span>
             <span className="flex min-w-0 items-center gap-2">
-              {f.value ? <span className="truncate text-[15px] text-warm">{f.value}</span> : <Chip tone="accent">Needs you</Chip>}
+              {f.value ? <span className="truncate text-[15px] text-warm">{f.value}</span>
+                : f.ask && f.selector ? (
+                  <input value={answers[f.selector] ?? ""} onChange={(e) => onAnswer(f.selector!, e.target.value)}
+                    placeholder="Needs you" aria-label={f.label}
+                    className="h-9 w-[16rem] max-w-full rounded-[8px] border-[0.8px] border-accent/60 bg-transparent px-3 text-[15px] text-warm outline-none placeholder:text-accent focus:border-accent" />
+                ) : <Chip tone="accent">Needs you</Chip>}
               {f.value && (f.confidence ?? 1) < 0.7 && <Chip tone="accent">check this</Chip>}
             </span>
           </li>
@@ -72,6 +81,8 @@ export default function Approve() {
   const [items, setItems] = useState<Proposal[] | null>(null);
   const [idx, setIdx] = useState(0);
   const [dir, setDir] = useState(1);
+  const [answers, setAnswers] = useState<Record<string, Answers>>({});
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     getPendingProposals().then((ps) => { setItems(ps); setPendingCount(ps.length); });
@@ -92,9 +103,19 @@ export default function Approve() {
   const act = useCallback((kind: "approve" | "skip") => {
     if (!current) return;
     setDir(kind === "approve" ? 1 : -1);
-    (kind === "approve" ? approve(current) : reject(current));
+    if (kind === "approve") {
+      const title = current.title;
+      const typed = Object.fromEntries(Object.entries(answers[current.id] ?? {}).filter(([, v]) => v.trim()));
+      // The service answers with the finished proposal; say so if the action did not go through.
+      approve(current, Object.keys(typed).length ? typed : undefined).then((res) => {
+        if (res.status === "failed") setNotice({ ok: false, text: `Couldn't finish "${title}". ${res.payload?.error ?? ""}`.trim() });
+        else if (res.payload?.confirmation) setNotice({ ok: true, text: `Done: ${title}` });
+        // A submitted form also settles its "answer these questions" card.
+        if (res.status === "done" && res.payload?.taskProposalId) remove([res.payload.taskProposalId]);
+      });
+    } else reject(current);
     remove([current.id]);
-  }, [current, remove]);
+  }, [current, remove, answers]);
 
   const approveLowRisk = () => {
     if (!items) return;
@@ -127,6 +148,7 @@ export default function Approve() {
         className="flex min-h-[60vh] flex-col items-center justify-center text-center">
         <Heading size="lg" className="mb-4">All clear.</Heading>
         <Lead>New suggestions show up here.</Lead>
+        {notice && <p role="status" className={`mt-6 max-w-[32rem] text-[13px] ${notice.ok ? "text-muted" : "text-accent"}`}>{notice.text}</p>}
       </motion.div>
     );
   }
@@ -151,6 +173,7 @@ export default function Approve() {
         <div className="mt-8 flex flex-col items-start gap-3">
           {hasLowRisk && <TextLink onClick={approveLowRisk}>Approve all low-risk</TextLink>}
           <span className="text-[12px] text-faint">A approve · S skip · J/K move</span>
+          {notice && <p role="status" className={`max-w-[22rem] text-[13px] ${notice.ok ? "text-muted" : "text-accent"}`}>{notice.text}</p>}
         </div>
       </div>
 
@@ -167,7 +190,8 @@ export default function Approve() {
             transition={{ duration: 0.22, ease: "easeOut" }}>
             <h2 className="display mb-3 text-[26px] leading-[1.15] text-ink">{current.title}</h2>
             <Why>{current.why}</Why>
-            <Preview p={current} />
+            <Preview p={current} answers={answers[current.id] ?? {}}
+              onAnswer={(sel, v) => setAnswers((a) => ({ ...a, [current.id]: { ...(a[current.id] ?? {}), [sel]: v } }))} />
             <div className="mt-8 flex items-center justify-end gap-3">
               <SecondaryButton onClick={() => act("skip")}>Skip</SecondaryButton>
               <PrimaryButton onClick={() => act("approve")}>Approve</PrimaryButton>

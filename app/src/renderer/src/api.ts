@@ -8,11 +8,11 @@ export type ServiceName = keyof typeof SERVICES;
 const online: Record<ServiceName, boolean> = { memory: false, inbox: false, actions: false };
 export const isOnline = (s: ServiceName) => online[s];
 
-async function req<T>(svc: ServiceName, path: string, init: RequestInit | undefined, fallback: () => T): Promise<T> {
+async function req<T>(svc: ServiceName, path: string, init: RequestInit | undefined, fallback: () => T, timeoutMs = 2500): Promise<T> {
   try {
     const r = await fetch(SERVICES[svc] + path, {
       ...init, headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
-      signal: AbortSignal.timeout(2500),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!r.ok) throw new Error(String(r.status));
     online[svc] = true;
@@ -52,7 +52,12 @@ export async function getPendingProposals(): Promise<Proposal[]> {
   return lists.flat().filter(p => !local[p.id] && p.status === "pending").sort((a, b) => b.urgency - a.urgency);
 }
 const svcFor = (p: Proposal): ServiceName => (p.agent === "ui" ? "memory" : p.agent);
-export const approve = (p: Proposal) => { local[p.id] = "approved"; return req(svcFor(p), `/proposals/${p.id}/approve`, post({}), () => ({ ok: true })); };
+// Approving can run real work (submitting a form in the browser), so it gets a long timeout and returns the
+// finished Proposal. `answers` maps a field selector to what the user typed for a "Needs you" field.
+export const approve = (p: Proposal, answers?: Record<string, string>) => {
+  local[p.id] = "approved";
+  return req<Partial<Proposal>>(svcFor(p), `/proposals/${p.id}/approve`, post(answers ? { answers } : {}), () => ({}), 45000);
+};
 export const reject = (p: Proposal) => { local[p.id] = "rejected"; return req(svcFor(p), `/proposals/${p.id}/reject`, post({}), () => ({ ok: true })); };
 
 // actions :7703 — Sidekick streams SSE steps; mock stream if offline
