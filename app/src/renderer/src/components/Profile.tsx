@@ -1,7 +1,8 @@
 // Profile avatar button + slide-over editor. Edits a local draft; saving syncs to Northstar memory.
 import { useEffect, useRef, useState, type ReactNode, type KeyboardEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { User, X } from "lucide-react";
+import { User, X, Loader2, Download } from "lucide-react";
+import { importLinkedIn, getLinkedIn, type LinkedInProfile } from "../jobsApi";
 import { useProfile, STATUS_LABELS, contextLine, WORK_AUTH_OPTIONS, type Profile, type Status } from "../profile";
 import { PrimaryButton, Eyebrow, TextLink } from "./ui";
 
@@ -53,9 +54,15 @@ export function ProfilePanel() {
   const [tag, setTag] = useState("");
   const [saving, setSaving] = useState(false);
   const closeTimer = useRef<number | undefined>(undefined);
+  type LiState = { kind: "idle" } | { kind: "importing" } | { kind: "needsLogin" } | { kind: "error"; msg: string } | { kind: "success"; p: LinkedInProfile };
+  const [li, setLi] = useState<LiState>({ kind: "idle" });
+  const [lastImport, setLastImport] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) { setDraft(profile); setTag(""); setSaving(false); }
+    if (open) {
+      setDraft(profile); setTag(""); setSaving(false); setLi({ kind: "idle" });
+      void getLinkedIn().then(p => setLastImport(p?.importedAt ?? null));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   useEffect(() => () => window.clearTimeout(closeTimer.current), []);
@@ -69,6 +76,29 @@ export function ProfilePanel() {
     setDraft(d => ({ ...d, interests: [...d.interests, ...items.filter(i => !d.interests.some(x => x.toLowerCase() === i.toLowerCase()))] }));
   };
   const removeTag = (t: string) => setDraft(d => ({ ...d, interests: d.interests.filter(x => x !== t) }));
+  const doImport = async () => {
+    const url = draft.linkedin.trim();
+    if (!url) { setLi({ kind: "error", msg: "Paste your LinkedIn profile URL first." }); return; }
+    setLi({ kind: "importing" });
+    const r = await importLinkedIn(url);
+    if (r.ok) {
+      const p = r.profile;
+      const edu = p.education?.[0];
+      const top = (p.skills ?? []).slice(0, 5);
+      setDraft(d => ({
+        ...d,
+        name: d.name.trim() ? d.name : p.name ?? "",
+        location: d.location.trim() ? d.location : p.location ?? "",
+        work: d.work.trim() ? d.work : p.headline || p.experience?.[0]?.title || "",
+        school: d.school.trim() ? d.school : edu?.school ?? "",
+        program: d.program.trim() ? d.program : edu?.degree ?? "",
+        interests: [...d.interests, ...top.filter(s => !d.interests.some(x => x.toLowerCase() === s.toLowerCase()))],
+      }));
+      setLastImport(p.importedAt ?? new Date().toISOString());
+      setLi({ kind: "success", p });
+    } else if (r.needsLogin) setLi({ kind: "needsLogin" });
+    else setLi({ kind: "error", msg: r.error });
+  };
   const toggleStatus = (s: Status) =>
     setDraft(d => ({ ...d, statuses: d.statuses.includes(s) ? d.statuses.filter(x => x !== s) : [...d.statuses, s] }));
 
@@ -188,7 +218,23 @@ export function ProfilePanel() {
                     <Field label="GPA"><input className={inputCls} value={draft.gpa} placeholder="3.8" onChange={e => set("gpa", e.target.value)} /></Field>
                     <Field label="Grad year"><input className={inputCls} value={draft.gradYear} placeholder="2028" onChange={e => set("gradYear", e.target.value)} /></Field>
                   </div>
-                  <Field label="LinkedIn"><input className={inputCls} value={draft.linkedin} placeholder="https://linkedin.com/in/..." onChange={e => set("linkedin", e.target.value)} /></Field>
+                  <div className="flex flex-col gap-2">
+                    <Field label="LinkedIn">
+                      <div className="flex gap-2">
+                        <input className={inputCls} value={draft.linkedin} placeholder="https://linkedin.com/in/..." onChange={e => set("linkedin", e.target.value)} />
+                        <button type="button" onClick={() => void doImport()} disabled={li.kind === "importing"}
+                          className="no-drag inline-flex shrink-0 items-center gap-1.5 rounded-[10px] border-[0.8px] border-line bg-white/[0.06] px-3 text-[13px] text-ink transition-colors hover:bg-white/[0.1] disabled:opacity-50">
+                          {li.kind === "importing" ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                          Import from LinkedIn
+                        </button>
+                      </div>
+                    </Field>
+                    {li.kind === "importing" && <p className="text-[12.5px] text-muted">Reading your LinkedIn in Chrome…</p>}
+                    {li.kind === "needsLogin" && <p className="text-[12.5px] text-accent">Sign in to LinkedIn in the Northstar Chrome window, then click Import again.</p>}
+                    {li.kind === "error" && <p className="text-[12.5px] text-amber-300/90">{li.msg}</p>}
+                    {li.kind === "success" && <p className="text-[12.5px] text-emerald-400/90">Imported: {li.p.headline || li.p.name} · {li.p.skills?.length ?? 0} skills</p>}
+                    {li.kind !== "success" && lastImport && <p className="text-[12px] text-faint">Last imported {new Date(lastImport).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>}
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="GitHub"><input className={inputCls} value={draft.github} placeholder="https://github.com/..." onChange={e => set("github", e.target.value)} /></Field>
                     <Field label="Website"><input className={inputCls} value={draft.website} placeholder="https://..." onChange={e => set("website", e.target.value)} /></Field>

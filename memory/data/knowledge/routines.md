@@ -1,7 +1,9 @@
 # Routines
 
+Best focus: 2-5pm
+
 - Sleep: 1am-9am. Not a morning person.
-- Best focus: 2-5pm. Afternoons are when real work gets done.
+- Afternoons are when real work gets done.
 - 8am study blocks get skipped almost every time (3 skipped in the last two weeks).
 - Prefers 25-50 minute work blocks with a short break.
 - Wants a heads-up the day before a deadline, not the morning of.

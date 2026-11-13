@@ -10,6 +10,7 @@ import fillRoutes from "./fill/index.js";
 import sidekickRoutes from "./sidekick/index.js";
 import { desktopRoutes } from "./desktop/agent.js";
 import tabRoutes from "./tabs/index.js";
+import linkedinRoutes from "./linkedin/index.js";
 
 const app = Fastify({ logger: true, bodyLimit: 20 * 1024 * 1024 });
 await app.register(cors, { origin: true, methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] });
@@ -24,6 +25,7 @@ await app.register(fillRoutes); // POST /fill, POST /submit
 await app.register(sidekickRoutes); // POST /sidekick (SSE)
 await app.register(desktopRoutes); // GET /desktop/status
 await app.register(tabRoutes); // GET /tabs, POST /tabs/organize, /tabs/sessions*, POST /tabs/archive
+await app.register(linkedinRoutes); // POST /linkedin/import, GET /linkedin, POST /apply/batch
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
   process.on(sig, async () => {

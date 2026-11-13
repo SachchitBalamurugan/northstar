@@ -7,6 +7,7 @@ import SearchHero from "./SearchHero";
 import RunPanel from "./RunPanel";
 import Results from "./Results";
 import Picks from "./Picks";
+import JobsForYou from "./JobsForYou";
 
 export interface AgentState { agent: ResearchAgent; steps: string[]; sources: string[]; found: number; done: boolean }
 export interface RunState {
@@ -56,6 +57,7 @@ export default function Discover() {
 
   return (
     <div className="pb-24">
+      <JobsForYou />
       <SearchHero onSearch={search} running={run?.status === "running" || run?.status === "planning"} onStop={stop} history={history} compact={!!run} />
       {run && (
         <div className="mt-8 grid grid-cols-[minmax(0,1fr)_340px] items-start gap-6">
