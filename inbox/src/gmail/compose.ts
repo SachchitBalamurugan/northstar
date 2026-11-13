@@ -57,7 +57,7 @@ export async function composeEmail(instruction: string) {
     type: "send_reply",
     title: `Email ${to}: ${subject}`,
     why: brief ? `You asked me to email ${to}. I researched current sources first.` : `You asked me to email ${to}.`,
-    urgency: 2,
+    urgency: 1, // user-requested: show first in Approve (triage scale, 1 = most urgent)
     payload: { emailId: "", threadId: "", to, subject, body, originalBody: body, autoSend: true, fresh: true,
       ...(brief?.citations?.length ? { sources: brief.citations } : {}) },
   });

@@ -122,7 +122,7 @@ export async function getPendingProposals(): Promise<Proposal[]> {
   const lists = await Promise.all((Object.keys(SERVICES) as ServiceName[]).map(s =>
     req<Proposal[]>(s, "/proposals?status=pending", undefined, () => mockProposals.filter(p => p.agent === s))
       .then(list => (isOnline(s) ? list.map(normProposal) : list))));
-  return lists.flat().filter(p => !local[p.id] && p.status === "pending").sort((a, b) => b.urgency - a.urgency);
+  return lists.flat().filter(p => !local[p.id] && p.status === "pending").sort((a, b) => b.urgency - a.urgency || +new Date(b.createdAt) - +new Date(a.createdAt));
 }
 const svcFor = (p: Proposal): ServiceName => (p.agent === "ui" ? "memory" : p.agent);
 // Approving can run real work (submitting a form in the browser), so it gets a long timeout and returns the
@@ -154,7 +154,12 @@ async function composeViaInbox(instruction: string, onStep: (s: SidekickStep) =>
     if (!r.ok) { step(p?.error ?? "Couldn't write that email.", "done"); return; }
     online.inbox = true;
     step(`Drafted "${p.payload?.subject ?? p.title}"${p.payload?.sources?.length ? ` with ${p.payload.sources.length} sources` : ""}`);
-    step("Paused before sending. Open Approve to read it and send.", "done");
+    step("Paused before sending. Opening Approve so you can read it and send…", "done");
+    // Take the user straight to the draft (it's sorted to the top of Approve).
+    setTimeout(async () => {
+      const { useUI } = await import("./store");
+      const ui = useUI.getState(); ui.closeCommand(); ui.setScreen("approve");
+    }, 1400);
   } catch {
     clearTimeout(t);
     step("The inbox service isn't reachable, so nothing was sent.", "done");
