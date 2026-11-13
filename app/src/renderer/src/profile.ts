@@ -210,3 +210,48 @@ export const useProfile = create<ProfileState>((set) => ({
     }).catch(() => { /* ignore */ });
   },
 }));
+
+/* ---------- the user's own name + the opt-in "notice what I work on" switch ---------- */
+// The name is typed by the user (onboarding or the dashboard greeting), kept in this browser, and shared with the
+// services so drafts and forms use it too.
+const NAME_KEY = "ns.userName";
+export const readName = (): string => { try { return localStorage.getItem(NAME_KEY) ?? ""; } catch { return ""; } };
+export const firstNameOf = (full: string) => full.trim().split(/\s+/)[0] ?? "";
+
+async function json<T>(url: string, init?: RequestInit, timeoutMs = 4000): Promise<T | null> {
+  try {
+    const r = await fetch(url, { ...init, headers: { "Content-Type": "application/json", ...(init?.headers || {}) }, signal: AbortSignal.timeout(timeoutMs) });
+    return r.ok ? ((await r.json()) as T) : null;
+  } catch { return null; }
+}
+
+/** Save the name everywhere it is used: this browser, the form-filling profile (actions) and the README in Knowledge (memory). */
+export async function saveName(full: string): Promise<void> {
+  const name = full.trim().replace(/\s+/g, " ").slice(0, 80);
+  try { localStorage.setItem(NAME_KEY, name); } catch { /* private mode */ }
+  const [firstName, ...rest] = name.split(" ");
+  await json(`${SERVICES.actions}/profile`, { method: "PUT", body: JSON.stringify({ name, firstName: firstName ?? "", lastName: rest.join(" ") }) });
+  const file = await json<{ content?: string }>(`${SERVICES.memory}/knowledge/README.md`);
+  if (file) {
+    const body = file.content ?? "";
+    const line = `Name: ${name}`;
+    const next = /^Name:.*$/m.test(body) ? body.replace(/^Name:.*$/m, line) : `${line}\n${body}`.trimEnd() + "\n";
+    if (next !== body) await json(`${SERVICES.memory}/knowledge/README.md`, { method: "PUT", body: JSON.stringify({ content: next }) });
+  }
+}
+
+/** A name already known to the services (for example typed on another screen), used when this browser has none. */
+export async function fetchKnownName(): Promise<string> {
+  const p = await json<{ name?: string }>(`${SERVICES.actions}/profile`, undefined, 2500);
+  return (p?.name ?? "").trim();
+}
+
+/* ---------- computer activity (actions :7703), strictly opt-in ---------- */
+export interface ActivityItem { label: string; detail?: string; minutes: number; kind: "app" | "site" | "document" }
+export interface ActivityStatus {
+  enabled: boolean; supported: boolean; running: boolean; note?: string;
+  since?: string; todayMinutes: number; today: ActivityItem[]; lastSeen?: { label: string; at: string };
+}
+export const getActivity = () => json<ActivityStatus>(`${SERVICES.actions}/activity`, undefined, 4000);
+export const setActivityEnabled = (enabled: boolean) =>
+  json<ActivityStatus>(`${SERVICES.actions}/activity/enable`, { method: "POST", body: JSON.stringify({ enabled }) }, 8000);

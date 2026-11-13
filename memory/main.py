@@ -46,7 +46,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True, "service": "memory"}
+    return {"ok": True, "service": "memory", "mock": config.MOCK}
 
 
 app.include_router(storage_router)

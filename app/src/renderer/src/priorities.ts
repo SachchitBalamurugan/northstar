@@ -52,7 +52,7 @@ export async function loadDashboard(): Promise<DashboardData> {
 
   // 1) The insight engine's single next thing always competes at the top.
   const nt: NextThing = insights.nextThing;
-  items.push({ id: "next", kind: "focus", title: nt.title, why: nt.why, dueAt: nt.dueAt, minutes: nt.minutes, score: 70 + dueBoost(nt.dueAt) });
+  if (nt?.title) items.push({ id: "next", kind: "focus", title: nt.title, why: nt.why, dueAt: nt.dueAt, minutes: nt.minutes, score: 70 + dueBoost(nt.dueAt) });
 
   // 2) Pending approvals (replies, calendar blocks, applications, tasks).
   const coveredSubjects = new Set<string>();

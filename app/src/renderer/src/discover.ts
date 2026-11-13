@@ -148,6 +148,8 @@ function results(topic: Topic, opts: ResearchOptions): Omit<DiscoverResult, "id"
 /* Real backend: memory service POST /discover/run {focus}             */
 /* (MOCK=0: OpenAI web research over the student's memory; MOCK=1: fixtures) */
 /* ------------------------------------------------------------------ */
+import { checkHealth, isDemo } from "./api";
+
 const MEMORY = "http://127.0.0.1:7701";
 interface BackendItem { id: string; title: string; summary: string; why: string; category: "opportunity" | "resource" | "event" | "reading" | "idea";
   url?: string; sourceLabel?: string; deadline?: string; nextStep?: string; confidence?: number }
@@ -188,10 +190,24 @@ function mapItem(it: BackendItem, agentId: string): DiscoverResult {
  *  Uses the real memory-service research when it's running; otherwise the built-in simulation. */
 export function startResearch(query: string, opts: ResearchOptions, onEvent: (e: DiscoverEvent) => void): () => void {
   let cancelled = false;
+  const abort = new AbortController();
   const t0 = Date.now();
   const emit = (e: DiscoverEvent) => { if (!cancelled) onEvent(e); };
   (async () => {
-    if (!(await memoryOnline())) { if (!cancelled) simulate(); return; }
+    if (!(await memoryOnline())) {
+      await checkHealth();
+      if (cancelled) return;
+      if (isDemo()) { simulate(); return; }
+      // Real mode: never show made-up results. Say what is wrong and stop.
+      emit({ type: "plan", intent: `Researching: ${query}`, agents: [AGENTS.general[0]], filters: [] });
+      emit({ type: "step", agentId: AGENTS.general[0].id, text: "Northstar's research service is not running, so there is nothing to show yet." });
+      emit({ type: "agent_done", agentId: AGENTS.general[0].id, found: 0 });
+      emit({ type: "done", total: 0, ms: Date.now() - t0 });
+      return;
+    }
+    // Live research stream (real mode): real steps, the sites actually read, and results that only carry cited links.
+    if (await streamResearch(query, opts, emit, abort.signal)) return;
+    if (cancelled) return;
     const topic = topicOf(query);
     const agents = AGENTS[topic];
     const filters = [opts.when === "week" ? "This week" : opts.when === "month" ? "This month" : "Any time", opts.where === "campus" ? "Near campus" : opts.where === "online" ? "Online" : "Anywhere"];
@@ -210,7 +226,14 @@ export function startResearch(query: string, opts: ResearchOptions, onEvent: (e:
     }
     for (const a of agents) emit({ type: "step", agentId: a.id, text: settled ? "Reading results" : "Waiting on web research…" });
     let items: BackendItem[];
-    try { items = await research; } catch { if (!cancelled) { emit({ type: "step", agentId: agents[0].id, text: "Research service failed; showing offline results" }); simulate(true); } return; }
+    try { items = await research; } catch {
+      if (cancelled) return;
+      if (isDemo()) { emit({ type: "step", agentId: agents[0].id, text: "Research service failed; showing offline results" }); simulate(true); return; }
+      emit({ type: "step", agentId: agents[0].id, text: "The research could not finish. Please try again in a moment." });
+      for (const a of agents) emit({ type: "agent_done", agentId: a.id, found: 0 });
+      emit({ type: "done", total: 0, ms: Date.now() - t0 });
+      return;
+    }
     if (cancelled) return;
     const counts: Record<string, number> = {};
     for (const [i, it] of items.entries()) {
@@ -223,7 +246,37 @@ export function startResearch(query: string, opts: ResearchOptions, onEvent: (e:
   })();
 
   function simulate(skipPlan = false) { void simulateRun(query, opts, emit, () => cancelled, skipPlan, t0); }
-  return () => { cancelled = true; };
+  return () => { cancelled = true; abort.abort(); };
+}
+
+/** POST /discover/research → SSE of DiscoverEvent. Resolves true when the run was handled by the stream (even if it
+ *  found nothing), false when the endpoint is unavailable (demo mode or an older service) so the caller falls back. */
+async function streamResearch(query: string, opts: ResearchOptions, emit: (e: DiscoverEvent) => void, signal: AbortSignal): Promise<boolean> {
+  let r: Response;
+  try {
+    r = await fetch(`${MEMORY}/discover/research`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, signal,
+      body: JSON.stringify({ query, when: opts.when, where: opts.where }),
+    });
+  } catch { return signal.aborted; }
+  if (!r.ok || !r.body) return false;
+  const reader = r.body.getReader(), dec = new TextDecoder();
+  let buf = "", finished = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i: number;
+      while ((i = buf.indexOf("\n\n")) >= 0) {
+        const line = buf.slice(0, i).split("\n").find(l => l.startsWith("data:")); buf = buf.slice(i + 2);
+        if (!line) continue;
+        try { const e = JSON.parse(line.slice(5).trim()) as DiscoverEvent; if (e.type === "done") finished = true; emit(e); } catch { /* skip a malformed frame */ }
+      }
+    }
+  } catch { /* cancelled or the connection dropped */ }
+  if (!finished && !signal.aborted) emit({ type: "done", total: 0, ms: 0 });
+  return true;
 }
 
 /** Offline simulation of a research run (used when the memory service isn't running or fails). */

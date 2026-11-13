@@ -1,6 +1,6 @@
 // Courses: syllabi the student uploaded, the deadlines found in them, and search. Inbox service :7702, mock fallback when offline.
 import type { Proposal } from "@contracts/types";
-import { SERVICES } from "./api";
+import { SERVICES, checkHealth, demoFallback, isDemo } from "./api";
 
 export interface CourseFact { label: string; value: string }
 export interface Course {
@@ -125,7 +125,7 @@ async function req<T>(path: string, init: RequestInit | undefined, fallback: () 
     if (!r.ok) throw new Error(String(r.status));
     return (await r.json()) as T;
   } catch {
-    return fallback();
+    return demoFallback(fallback);
   }
 }
 
@@ -150,9 +150,11 @@ export async function uploadSyllabus(u: SyllabusUpload): Promise<SyllabusResult>
     });
   } catch (e) {
     if (e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError")) throw new Error("timeout");
+    await checkHealth();
+    if (!isDemo()) throw new Error("offline"); // real mode: never pretend a syllabus was read
     return mockUpload(u);
   }
-  if (r.status === 404) return mockUpload(u); // endpoint not shipped yet
+  if (r.status === 404 && isDemo()) return mockUpload(u); // endpoint not shipped yet
   if (!r.ok) throw new Error(String(r.status));
   return (await r.json()) as SyllabusResult;
 }

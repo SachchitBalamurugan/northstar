@@ -7,6 +7,7 @@ import type { EventCandidate } from "@contracts/types";
 import { suggestEvents, addEvent } from "@/calendarAgent";
 import { Heading, Eyebrow, GlowCard, PrimaryButton, SecondaryButton, Window, Chip, relTime, clock } from "@/components/ui";
 import { useUI } from "@/store";
+import NameInline from "@/components/NameInline";
 import { useProfile, firstName } from "@/profile";
 import { approve, draftReply } from "@/api";
 import { loadDashboard, type DashboardData, type Priority, type PriorityKind } from "@/priorities";
@@ -57,7 +58,8 @@ export default function Dashboard() {
     <div className="pb-40">
       {/* Header */}
       <Heading eyebrow={new Date().toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}>
-        {`${greeting()}${name !== "there" ? `, ${name}` : ""}.`}<br />
+        {/* The profile name wins; without one, the inline editable name. */}
+        {greeting()}, {name !== "there" ? name : <NameInline />}.<br />
         {data ? <>{list.length === 0 ? "You're all " : `${Math.min(list.length, 3)} things matter `}<span className="text-glow">{list.length === 0 ? "caught up." : "today."}</span></> : <span className="text-faint">Reading your day…</span>}
       </Heading>
 

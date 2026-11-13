@@ -8,6 +8,7 @@ import { cancelRun, getRuns, getToday, getWeek } from "@/api";
 import { useUI } from "@/store";
 import { Heading, Eyebrow, Window, Chip, SecondaryButton, TextLink, clock } from "@/components/ui";
 import TabOrganizer from "@/components/TabOrganizer";
+import ActivityWatch from "@/components/ActivityWatch";
 
 const MAX_ROWS = 5;
 const DAY_START = 8;
@@ -252,6 +253,9 @@ export default function Activity() {
           )}
         </div>
       </div>
+
+      {/* ---------- what the student worked on (opt-in) ---------- */}
+      <ActivityWatch />
 
       {/* ---------- tabs ---------- */}
       <TabOrganizer />

@@ -35,6 +35,14 @@ const api = {
   notchExpand: () => ipcRenderer.send("ns:notch-expand"),
   notchCollapse: () => ipcRenderer.send("ns:notch-collapse"),
   notchOpenMain: (screen: string) => ipcRenderer.send("ns:notch-open-main", screen),
+  // Collapsed size, and whether the widget sits behind a real MacBook camera notch
+  notchGeometry: (): { hardware: boolean; width: number; height: number; touch: boolean } => ipcRenderer.sendSync("ns:notch-geometry"),
+  // Touch to open: asks macOS for the camera the first time; false when the user said no
+  cameraAccess: (): Promise<boolean> => ipcRenderer.invoke("ns:camera-access"),
+  onNotchGeometry: (cb: (g: { hardware: boolean; width: number; height: number; touch: boolean }) => void) => {
+    const h = (_e: unknown, g: { hardware: boolean; width: number; height: number; touch: boolean }) => cb(g);
+    ipcRenderer.on("ns:notch-geometry", h); return () => ipcRenderer.removeListener("ns:notch-geometry", h);
+  },
   onNavigate: (cb: (screen: string) => void) => {
     const h = (_e: unknown, s: string) => cb(s);
     ipcRenderer.on("ns:navigate", h); return () => ipcRenderer.removeListener("ns:navigate", h);

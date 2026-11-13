@@ -12,6 +12,7 @@ import {
 
 type Item = { title: string; why: string; minutes: number; dueAt?: string };
 
+
 function greeting(d: Date) {
   const h = d.getHours();
   if (h < 12) return "Good morning";
@@ -34,7 +35,10 @@ const HOUR_LABELS: [number, string][] = [[8, "8a"], [12, "12p"], [16, "4p"], [20
 
 export default function Now() {
   const startFocus = useUI(s => s.startFocus);
-  const name = useProfile(s => firstName(s.profile));
+  // The profile name wins; without one, the name typed in onboarding or the dashboard greeting.
+  const typedName = useUI(s => s.userName).trim().split(/\s+/)[0] ?? "";
+  const profileName = useProfile(s => firstName(s.profile));
+  const name = profileName !== "there" ? profileName : typedName;
   const now = useNow();
   const [insights, setInsights] = useState<Insights | null>(null);
   const [events, setEvents] = useState<CalEvent[] | null>(null);
@@ -79,7 +83,7 @@ export default function Now() {
 
           <motion.div variants={rise}>
             <Heading size="xl" className="mb-6">
-              {`${greeting(now)}${name !== "there" ? `, ${name}` : ""}.`}<br />Here's your <span className="text-glow">one thing.</span>
+              {greeting(now)}{name ? `, ${name}` : ""}.<br />Here's your <span className="text-glow">one thing.</span>
             </Heading>
           </motion.div>
 

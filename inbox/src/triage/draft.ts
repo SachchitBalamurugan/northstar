@@ -6,7 +6,8 @@ import { getContext } from "../memory.js";
 import { complete } from "../llm.js";
 import type { CachedEmail, ContextResponse, Proposal, SenderRole, TriagedEmail } from "../types.js";
 import { DraftSchema } from "./schemas.js";
-import { DRAFT_SYSTEM, draftUserPrompt } from "./prompts.js";
+import { draftSystem, draftUserPrompt } from "./prompts.js";
+import { studentName } from "../profile.js";
 import { fmtWhen, heuristicTriage, memoryMention } from "./heuristics.js";
 
 export class NotFoundError extends Error {
@@ -17,16 +18,19 @@ export class NotFoundError extends Error {
 
 export interface WritingStyle { name: string; greeting: string; signOff: string; notes: string }
 
-const DEFAULT_STYLE: WritingStyle = { name: "Maya", greeting: "Hi", signOff: "Thanks!\nMaya", notes: "" };
+/** With no writingstyle.md: sign with the name the user gave Northstar ("Maya" is the demo default used by tests). */
+const defaultStyle = (name: string): WritingStyle => ({ name, greeting: "Hi", signOff: name ? `Thanks!\n${name}` : "Thanks!", notes: "" });
 
 /** Pull the bits we need out of writingstyle.md. Lines like `Sign-off: Thanks! Maya` / `Greeting: Hey` / `Name: Maya`. */
-export function parseWritingStyle(md: string): WritingStyle {
+export function parseWritingStyle(md: string, fallbackName = "Maya"): WritingStyle {
+  const DEFAULT_STYLE = defaultStyle(fallbackName);
   const pick = (key: string) => {
     const m = new RegExp(`^\\s*(?:[-*]\\s*)?(?:\\*\\*)?(?:${key})(?:\\*\\*)?\\s*[:=]\\s*["“]?(.+?)["”]?\\s*$`, "im").exec(md);
     return m?.[1]?.trim();
   };
-  const signOff = (pick("sign-?off|closing|signature") ?? DEFAULT_STYLE.signOff).replace(/\\n/g, "\n");
-  const name = pick("name|signs? as") ?? signOff.split(/\s+/).pop() ?? DEFAULT_STYLE.name;
+  const picked = pick("sign-?off|closing|signature");
+  const signOff = (picked ?? DEFAULT_STYLE.signOff).replace(/\\n/g, "\n");
+  const name = pick("name|signs? as") ?? (picked || DEFAULT_STYLE.name ? signOff.split(/\s+/).pop() : undefined) ?? DEFAULT_STYLE.name;
   const greeting = pick("greeting|opens? with|opener") ?? DEFAULT_STYLE.greeting;
   return { name, greeting, signOff, notes: md.trim() };
 }
@@ -47,7 +51,9 @@ function ensureSignOff(body: string, style: WritingStyle): string {
   if (trimmed.endsWith(style.signOff)) return trimmed;
   // the model may have written a near-miss sign-off ("Thanks, Maya"); replace the last short lines
   const lines = trimmed.split("\n");
-  while (lines.length > 1 && /^(thanks|thank you|best|cheers|sincerely|regards|[-–—]?\s*maya|\s*)[,!.]?\s*(maya)?\s*$/i.test(lines[lines.length - 1])) lines.pop();
+  const n = (style.name || "maya").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const near = new RegExp(`^(thanks|thank you|best|cheers|sincerely|regards|[-–—]?\\s*${n}|\\s*)[,!.]?\\s*(${n})?\\s*$`, "i");
+  while (lines.length > 1 && near.test(lines[lines.length - 1])) lines.pop();
   return `${lines.join("\n").trimEnd()}\n\n${style.signOff}`;
 }
 
@@ -125,7 +131,8 @@ export async function draftReply(emailId: string): Promise<Proposal> {
   if (existing) return existing;
 
   const ctx: ContextResponse = await getContext(`writingstyle ${email.from}`, 6);
-  const style = parseWritingStyle(ctx.knowledge.find((k) => /writingstyle/i.test(k.file))?.content ?? "");
+  const me = await studentName();
+  const style = parseWritingStyle(ctx.knowledge.find((k) => /writingstyle/i.test(k.file))?.content ?? "", me);
   const triaged = findTriaged(emailId) ?? heuristicTriage(email, ctx);
   const senderContext = ctx.knowledge
     .filter((k) => !/writingstyle/i.test(k.file))
@@ -140,7 +147,9 @@ export async function draftReply(emailId: string): Promise<Proposal> {
   try {
     const out = await complete({
       tier: "fast",
-      system: `${DRAFT_SYSTEM}\nThe exact sign-off is:\n${signOff}${signRule(signer)}`,
+      system: `${draftSystem(me)}
+The exact sign-off is:
+${signOff}${signRule(signer)}`,
       input: draftUserPrompt({
         styleNotes: style.notes, senderContext, from: email.from, fromEmail: email.fromEmail,
         subject: email.subject, receivedAt: email.receivedAt, body: email.bodyText.slice(0, 4000), asks: triaged.asks,

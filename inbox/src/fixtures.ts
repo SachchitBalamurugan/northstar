@@ -3,7 +3,7 @@
 // always looks current ("due Friday" stays in the future).
 import fs from "node:fs";
 import path from "node:path";
-import { FIXTURES_DIR } from "./config.js";
+import { FIXTURES_DIR, MOCK_ENV } from "./config.js";
 
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/;
 
@@ -27,7 +27,12 @@ export function shiftIsoStrings<T>(value: T, deltaMs: number): T {
   return value;
 }
 
+/** Demo mail/calendar is only ever shown in demo mode (MOCK=1, or INBOX_DEMO=1 for tests). A real-mode user who has
+ *  not connected Google yet sees an empty inbox, never someone else's made-up one. */
+export const demoDataAllowed = (): boolean => MOCK_ENV || process.env.INBOX_DEMO === "1";
+
 export function loadFixture<T>(name: string, now: Date = new Date()): T[] {
+  if (!demoDataAllowed()) return [];
   const file = path.join(FIXTURES_DIR, name);
   const raw = JSON.parse(fs.readFileSync(file, "utf8")) as { anchor: string; items: T[] };
   const delta = startOfDay(now).getTime() - startOfDay(new Date(raw.anchor)).getTime();

@@ -1,4 +1,5 @@
-// GET/PUT /profile backed by data/profile.json. Seeded with the demo student on first run.
+// GET/PUT /profile backed by data/profile.json. Demo mode (MOCK=1) starts from the demo student; real mode starts
+// EMPTY and is filled by what the user types, so nothing is ever submitted under a made-up identity.
 import fs from "node:fs";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
@@ -7,7 +8,7 @@ import type { Profile } from "./types.js";
 
 const FILE = path.join(DATA_DIR, "profile.json");
 
-const SEED: Profile = {
+const DEMO: Profile = {
   name: "Maya Chen",
   firstName: "Maya",
   lastName: "Chen",
@@ -98,12 +99,13 @@ async function readMemoryProfile(): Promise<Partial<Profile>> {
 
 /** Mock mode: demo seed + profile.json. Real mode: empty + profile.json + the user's Northstar profile from memory. */
 export async function readProfile(): Promise<Profile> {
-  if (MOCK) return { ...SEED, ...readFile() } as Profile;
+  if (MOCK) return { ...DEMO, ...readFile() } as Profile;
   return { ...EMPTY, ...readFile(), ...(await readMemoryProfile()) } as Profile;
 }
 
 export async function writeProfile(patch: Partial<Profile>): Promise<Profile> {
-  const base = MOCK ? { ...SEED, ...readFile() } : { ...readFile() };
+  const base = MOCK ? { ...DEMO, ...readFile() } : { ...readFile() };
+  fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(FILE, JSON.stringify({ ...base, ...patch }, null, 2));
   return readProfile();
 }

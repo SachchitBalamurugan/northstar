@@ -115,7 +115,7 @@ const dataDir = (n: string) => {
   return d;
 };
 const REAL = process.argv.includes("--real"); // real-mode pass: MOCK=0, model calls with the key from .env
-const BASE_ENV = { MOCK: REAL ? "0" : "1", HEADLESS: "1", MEMORY_URL: MEM, DESKTOP_CONTROL: "0" }; // never drive the real desktop
+const BASE_ENV = { MOCK: REAL ? "0" : "1", INBOX_DEMO: "1", HEADLESS: "1", MEMORY_URL: MEM, DESKTOP_CONTROL: "0" }; // never drive the real desktop
 // memory mirrors facts into umem, whose global store lives under $HOME: give it a throw-away HOME so a test
 // run never writes to the real home directory. uv keeps using its real cache and interpreters.
 const uvDir = (...a: string[]) => {

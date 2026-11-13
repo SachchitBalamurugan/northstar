@@ -126,7 +126,11 @@ def build_profile() -> list[str]:
     forms = [e for e in events if e.source == "form"][:4]
     prefs = [e for e in events if e.kind == "preference" and not _has_tag(e, "discover")][:4]
     deadlines = [e for e in events if e.kind == "deadline" and not _has_tag(e, "done")][:4]
-    for label, group in (("form event", forms), ("preference", prefs), ("deadline", deadlines)):
+    # what the student actually works on (opt-in computer activity) and what their mail and calendar say
+    activity = [e for e in events if e.source == "screen" and _has_tag(e, "activity")][:6]
+    mail = [e for e in events if e.source in ("gmail", "calendar") and e.kind in ("observation", "fact", "task")][:4]
+    for label, group in (("form event", forms), ("preference", prefs), ("deadline", deadlines),
+                         ("computer activity", activity), ("mail and calendar", mail)):
         lines.extend(f"{label}: {e.text}" for e in group)
     return [_clip(line, 200) for line in lines][:48]
 

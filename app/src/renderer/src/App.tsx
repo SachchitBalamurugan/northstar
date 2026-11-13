@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useAnimationControls } from "framer-motion";
 import { useUI, type Screen } from "./store";
 import { checkHealth, getPendingProposals, type ServiceName } from "./api";
+import { fetchKnownName } from "./profile";
 import { AmbientGlow, GlassPill, LogoMark } from "./components/ui";
 import FloatingHandoff from "./components/FloatingHandoff";
 import GoogleStatus from "./components/GoogleStatus";
@@ -116,6 +117,12 @@ export default function App() {
     fromHash(); window.addEventListener("hashchange", fromHash);
     const offNav = window.northstar?.onNavigate(go);
     return () => { window.removeEventListener("hashchange", fromHash); offNav?.(); };
+  }, []);
+
+  // No name in this browser yet: adopt one the services already know (typed earlier), otherwise the greeting asks for it.
+  useEffect(() => {
+    if (useUI.getState().userName) return;
+    fetchKnownName().then(n => { if (n && !useUI.getState().userName) { try { localStorage.setItem("ns.userName", n); } catch {} useUI.setState({ userName: n }); } });
   }, []);
 
   const live = Object.values(health).filter(Boolean).length;

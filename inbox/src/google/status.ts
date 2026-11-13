@@ -27,8 +27,8 @@ export function authStatus(): AuthStatus {
   const email = authed ? authedEmail() : undefined;
   let reason: string | undefined;
   if (MOCK_ENV) reason = "MOCK=1 is set, so Northstar is showing demo data. Set MOCK=0 in .env and restart to use your real Gmail and Calendar.";
-  else if (!configured) reason = "Google is not set up yet. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env and restart. Showing demo data until then.";
-  else if (!authed) reason = authError() ?? "Google is not connected yet. Choose Connect Google to sign in. Showing demo data until then.";
+  else if (!configured) reason = "Google is not set up yet. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env and restart. Your inbox and calendar stay empty until then.";
+  else if (!authed) reason = authError() ?? "Google is not connected yet. Choose Connect Google to sign in. Your inbox and calendar stay empty until then.";
   else {
     const missing = missingScopes();
     if (missing.length) {

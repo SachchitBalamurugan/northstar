@@ -9,7 +9,8 @@ import { complete, llmAvailable, LLMUnavailable } from "../llm.js";
 import { registerApproveHandler } from "../proposals.js";
 import type { CachedEmail, ContextResponse, Deadline, TriageResponse, TriagedEmail } from "../types.js";
 import { TriageBatchSchema, type TriageItem } from "./schemas.js";
-import { TRIAGE_SYSTEM, triageUserPrompt } from "./prompts.js";
+import { triageSystem, triageUserPrompt } from "./prompts.js";
+import { studentName } from "../profile.js";
 import { heuristicTriage } from "./heuristics.js";
 
 export const BATCH_SIZE = 20;
@@ -87,7 +88,7 @@ async function triageBatchWithModel(batch: CachedEmail[], ctxs: ContextResponse[
   }));
   const result = await complete({
     tier: "fast",
-    system: TRIAGE_SYSTEM,
+    system: triageSystem(await studentName()),
     input: triageUserPrompt(JSON.stringify(payload, null, 1), now.toISOString()),
     schema: TriageBatchSchema,
     schemaName: "triage_batch",

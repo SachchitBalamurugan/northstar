@@ -1,5 +1,5 @@
 // Discover: things Northstar researched for the student. Memory service :7701, with a mock fallback when it is offline.
-import { SERVICES } from "./api";
+import { SERVICES, isDemo } from "./api";
 
 export type DiscoverCategory = "opportunity" | "resource" | "event" | "reading" | "idea";
 
@@ -103,7 +103,7 @@ const clean = (f: DiscoverFeed): DiscoverFeed => ({
 
 export async function getDiscover(): Promise<DiscoverFeed> {
   const r = await call<DiscoverFeed>("/discover");
-  return clean(r.ok ? r.data : mock);
+  return clean(r.ok ? r.data : isDemo() ? mock : { generatedAt: null, basedOn: [], items: [] });
 }
 
 /** Real research can take 30-60 s, so this waits up to two minutes. */

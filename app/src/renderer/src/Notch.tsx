@@ -1,5 +1,9 @@
 // Mac-notch / Dynamic-Island widget at the top-center of the screen.
-// Collapsed: 220x10 black pill. Expanded: 460x340 panel (main process resizes the window).
+// On a MacBook with a camera notch it lives in the real notch: collapsed it is hidden behind the cutout (hover the
+// notch to open) and the panel grows out of it. Elsewhere: a drawn 220x10 black pill. Expanded: 460x340 of content
+// (plus the notch height on a notched Mac). The main process resizes the window.
+// Touch to open: the camera sits in the notch, so covering it with a finger turns its picture dark. The widget
+// watches for that and opens (touch again to close). Frames are averaged to one brightness number here and dropped.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUpRight, CornerDownLeft } from "lucide-react";
@@ -10,9 +14,70 @@ import type { Brief } from "./briefApi";
 import { useProfile, firstName } from "./profile";
 import type { Insights } from "@contracts/types";
 
+interface Geometry { hardware: boolean; width: number; height: number; touch?: boolean }
+const DRAWN: Geometry = { hardware: false, width: 220, height: 10, touch: false };
+const PANEL = { width: 460, height: 340 };
+
 const bridge = () => (window as any).northstar as
-  | { notchExpand?: () => void; notchCollapse?: () => void; notchOpenMain?: (s: string) => void }
+  | {
+      notchExpand?: () => void; notchCollapse?: () => void; notchOpenMain?: (s: string) => void;
+      notchGeometry?: () => Geometry; onNotchGeometry?: (cb: (g: Geometry) => void) => () => void;
+      cameraAccess?: () => Promise<boolean>;
+    }
   | undefined;
+
+/* ---------- touch the camera to open ---------- */
+type TouchState = "off" | "starting" | "watching" | "denied" | "unavailable";
+const SAMPLE_MS = 120, SW = 32, SH = 24;
+const DARK_MAX = 60;      // a covered lens is never brighter than this (0-255), even with a finger glowing red in sunlight
+const DARK_RATIO = 0.45;  // ...and is under 45% of what the room looked like just before
+const CLEAR_RATIO = 0.7;  // the finger is gone once brightness is back to 70% of the room
+
+/** Calls onTouch once each time the camera goes from seeing the room to covered. A dark room never triggers. */
+function useCameraTouch(enabled: boolean, onTouch: () => void): TouchState {
+  const [state, setState] = useState<TouchState>("off");
+  const cb = useRef(onTouch); cb.current = onTouch;
+  useEffect(() => {
+    if (!enabled) { setState("off"); return; }
+    let stopped = false, stream: MediaStream | null = null, timer = 0;
+    const video = document.createElement("video"); video.muted = true; video.playsInline = true;
+    const canvas = document.createElement("canvas"); canvas.width = SW; canvas.height = SH;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    setState("starting");
+    (async () => {
+      if (!ctx || !navigator.mediaDevices?.getUserMedia) { setState("unavailable"); return; }
+      if ((await bridge()?.cameraAccess?.()) === false) { setState("denied"); return; }
+      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { width: 320, height: 240, frameRate: 10 } });
+      if (stopped) { stream.getTracks().forEach((t) => t.stop()); return; }
+      video.srcObject = stream; await video.play();
+      setState("watching");
+      let room = -1, darkFrames = 0, covered = false;
+      timer = window.setInterval(() => {
+        if (video.readyState < 2) return;
+        ctx.drawImage(video, 0, 0, SW, SH);
+        const px = ctx.getImageData(0, 0, SW, SH).data;
+        let sum = 0;
+        for (let i = 0; i < px.length; i += 4) sum += 0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2];
+        const luma = sum / (SW * SH);
+        if (room < 0) { room = luma; return; }
+        if (covered) { // wait for the finger to lift before listening for the next touch
+          if (luma > room * CLEAR_RATIO) { covered = false; darkFrames = 0; }
+          return;
+        }
+        if (luma < DARK_MAX && luma < room * DARK_RATIO) {
+          if (++darkFrames >= 2) { covered = true; cb.current(); } // two frames in a row: not a flicker
+        } else { darkFrames = 0; room += (luma - room) * 0.1; } // follow slow changes in room light
+      }, SAMPLE_MS);
+    })().catch((e: any) => {
+      if (!stopped) setState(e?.name === "NotAllowedError" ? "denied" : "unavailable");
+    });
+    return () => {
+      stopped = true; clearInterval(timer);
+      stream?.getTracks().forEach((t) => t.stop()); video.srcObject = null;
+    };
+  }, [enabled]);
+  return state;
+}
 
 interface Data { insights: Insights | null; events: CalEventFull[]; brief: Brief | null; pending: number }
 
@@ -43,6 +108,11 @@ export default function Notch() {
   const [step, setStep] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const leaveTimer = useRef<number | null>(null);
+  const [geo, setGeo] = useState<Geometry>(() => { try { return bridge()?.notchGeometry?.() ?? DRAWN; } catch { return DRAWN; } });
+  useEffect(() => bridge()?.onNotchGeometry?.(setGeo), []);
+  // Content starts below the hardware cutout; the panel is that much taller.
+  const inset = geo.hardware ? geo.height : 0;
+  const closed = { scaleX: geo.width / PANEL.width, scaleY: geo.height / (PANEL.height + inset) };
 
   useEffect(() => {
     for (const el of [document.documentElement, document.body, document.getElementById("root")]) {
@@ -94,6 +164,15 @@ export default function Notch() {
   useEffect(() => () => clearLeave(), []);
 
   const onLeave = () => { clearLeave(); leaveTimer.current = window.setTimeout(collapse, 700); };
+
+  // A touch on the camera toggles the widget. Opened by touch with the pointer elsewhere, it closes itself after a while.
+  const touchState = useCameraTouch(!!geo.touch, () => {
+    if (expanded) { collapse(); return; }
+    expand();
+    leaveTimer.current = window.setTimeout(collapse, 12_000);
+  });
+  const touchNote = touchState === "denied" ? "Touch to open is off: allow the camera in System Settings > Privacy & Security > Camera, then restart Northstar."
+    : touchState === "unavailable" ? "Touch to open is off: the camera could not be started." : "";
   const open = (s: string) => bridge()?.notchOpenMain?.(s);
 
   const submit = async () => {
@@ -121,19 +200,23 @@ export default function Notch() {
             onMouseEnter={expand}
             onClick={expand}
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.05 } }}
-            className="w-[220px] h-[10px] rounded-b-[10px] bg-black cursor-pointer"
-            style={{ boxShadow: "inset 0 -1px 0 rgba(255,255,255,0.12), inset 0 0 0 1px rgba(255,255,255,0.04)" }}
+            className="rounded-b-[10px] bg-black cursor-pointer"
+            style={{
+              width: geo.width, height: geo.height,
+              // Behind real hardware the pill stays pure black so it is indistinguishable from the cutout.
+              boxShadow: geo.hardware ? undefined : "inset 0 -1px 0 rgba(255,255,255,0.12), inset 0 0 0 1px rgba(255,255,255,0.04)",
+            }}
           />
         ) : (
           <motion.div
             key="panel"
             onMouseEnter={clearLeave}
             onMouseLeave={onLeave}
-            initial={{ scaleY: 0.03, scaleX: 0.48, opacity: 0.6 }}
+            initial={{ ...closed, opacity: geo.hardware ? 1 : 0.6 }}
             animate={{ scaleY: 1, scaleX: 1, opacity: 1, transition: { duration: 0.22, ease: "easeOut" } }}
-            exit={{ scaleY: 0.03, scaleX: 0.48, opacity: 0, transition: { duration: 0.18, ease: "easeIn" } }}
-            style={{ transformOrigin: "top center" }}
-            className="w-[460px] h-[340px] rounded-b-[24px] bg-black border border-white/10 border-t-0 shadow-2xl overflow-hidden text-[13px] text-ink"
+            exit={{ ...closed, opacity: geo.hardware ? 1 : 0, transition: { duration: 0.18, ease: "easeIn" } }}
+            style={{ transformOrigin: "top center", width: PANEL.width, height: PANEL.height + inset, paddingTop: inset }}
+            className="rounded-b-[24px] bg-black border border-white/10 border-t-0 shadow-2xl overflow-hidden text-[13px] text-ink"
           >
             <motion.div
               initial={{ opacity: 0, y: -4 }}
@@ -150,6 +233,7 @@ export default function Notch() {
                     <span className="text-faint"> · </span>
                     <span className="tabular-nums">{now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}</span>
                   </div>
+                  {touchNote && <div className="text-[10.5px] text-faint truncate" title={touchNote}>{touchNote}</div>}
                 </div>
                 <button onClick={() => open("dashboard")} className="shrink-0 flex items-center gap-1 text-[11px] text-muted hover:text-ink border border-white/10 rounded-full px-2.5 py-1 transition-colors">
                   Open <ArrowUpRight size={12} />

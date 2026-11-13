@@ -76,10 +76,10 @@ export default function GoogleConnect({ onSynced }: { /** Called after a sync so
           <TextLink onClick={disconnect} className="text-[13px]">Disconnect</TextLink>
         </>
       ) : !status.configured ? (
-        <span className="min-w-0 flex-1 text-muted">Showing sample mail. The Google keys aren't set up on this computer yet, so there is nothing to connect for now.</span>
+        <span className="min-w-0 flex-1 text-muted">{status.mock ? "Showing sample mail. " : "Nothing here yet. "}The Google keys aren't set up on this computer yet, so there is nothing to connect for now.</span>
       ) : (
         <>
-          <span className="min-w-0 flex-1 text-muted">Showing sample mail. Connect Gmail and Calendar to see yours.</span>
+          <span className="min-w-0 flex-1 text-muted">{status.mock ? "Showing sample mail. Connect Gmail and Calendar to see yours." : "Your inbox is empty until you connect Gmail and Calendar."}</span>
           <button onClick={connect}
             className="no-drag shrink-0 rounded-full bg-white px-3.5 py-1.5 text-[12.5px] font-medium text-black transition-opacity duration-150 hover:opacity-90">
             Connect

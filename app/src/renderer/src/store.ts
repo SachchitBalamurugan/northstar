@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { readName, saveName } from "./profile";
 
 export type Screen = "dashboard" | "now" | "activity" | "approve" | "workflow" | "knowledge";
 export type WorkflowTab = "inbox" | "calendar" | "courses" | "discover";
@@ -9,6 +10,8 @@ interface UIState {
   focusTask: { title: string; minutes: number } | null; startFocus: (t: { title: string; minutes: number }) => void; endFocus: () => void;
   commandOpen: boolean; commandPrefill: string; openCommand: (prefill?: string) => void; closeCommand: () => void;
   onboarded: boolean; finishOnboarding: () => void;
+  /** What the user asked to be called. Empty until they type it; never a placeholder person. */
+  userName: string; setUserName: (name: string) => void;
   pendingCount: number; setPendingCount: (n: number) => void;
   /** Questions typed into the dashboard's floating input. The chat screen (not built yet) will pick these up. */
   chatQueue: string[]; askChat: (q: string) => void;
@@ -23,6 +26,7 @@ export const useUI = create<UIState>((set) => ({
   focusTask: null, startFocus: (focusTask) => set({ focusTask }), endFocus: () => set({ focusTask: null }),
   commandOpen: false, commandPrefill: "", openCommand: (commandPrefill = "") => set({ commandOpen: true, commandPrefill }), closeCommand: () => set({ commandOpen: false, commandPrefill: "" }),
   onboarded: readOnb(), finishOnboarding: () => { try { localStorage.setItem(ONB_KEY, "1"); } catch {} set({ onboarded: true }); },
+  userName: readName(), setUserName: (userName) => { const name = userName.trim(); set({ userName: name }); void saveName(name); },
   pendingCount: 0, setPendingCount: (pendingCount) => set({ pendingCount }),
   chatQueue: [], askChat: (q) => set((s) => ({ chatQueue: [...s.chatQueue, q] })),
 }));

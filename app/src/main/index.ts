@@ -1,7 +1,8 @@
 // Electron main. The "Shell" sub-agent owns this file (tray, hotkeys, notifications).
-import { app, BrowserWindow, shell, Tray, Menu, nativeImage, globalShortcut, ipcMain, Notification, screen } from "electron";
+import { app, BrowserWindow, shell, Tray, Menu, nativeImage, globalShortcut, ipcMain, Notification, screen, systemPreferences } from "electron";
 import { join } from "path";
 import { deflateSync } from "zlib";
+import { execFileSync } from "child_process";
 
 let win: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -162,10 +163,62 @@ function createBubble() {
 let notch: BrowserWindow | null = null;
 let notchExpanded = false;
 let notchEnabled = true;
+// Touch to open: the widget watches the camera and opens when it goes dark (a finger over the lens). Tray switch.
+let touchEnabled = true;
 const NOTCH_COLLAPSED = { width: 220, height: 10 };
 const NOTCH_EXPANDED = { width: 460, height: 340 };
 
+// On a MacBook with a camera housing the widget lives in the real notch: collapsed it sits exactly behind the
+// hardware cutout (invisible, hover to open), expanded it grows down out of it. Everywhere else it draws its own pill.
+interface HwNotch { x: number; y: number; width: number; height: number } // screen coordinates
+let hwNotch: HwNotch | null = null;
+// AppKit reports the menu-bar strips left and right of the cutout; the gap between them is the notch.
+const NOTCH_JXA = 'ObjC.import("AppKit");var o=[],ss=$.NSScreen.screens;for(var i=0;i<ss.count;i++){var s=ss.objectAtIndex(i),f=s.frame,' +
+  'l=s.auxiliaryTopLeftArea,r=s.auxiliaryTopRightArea;o.push({w:f.size.width,h:f.size.height,lw:l.size.width,lh:l.size.height,' +
+  'rx:r.origin.x-f.origin.x,rw:r.size.width})}JSON.stringify(o)';
+
+function readHwNotch(): HwNotch | null {
+  if (process.platform !== "darwin") return null;
+  try {
+    const out = execFileSync("/usr/bin/osascript", ["-l", "JavaScript", "-e", NOTCH_JXA], { encoding: "utf8", timeout: 3000 });
+    const screens = JSON.parse(out) as { w: number; h: number; lw: number; lh: number; rx: number; rw: number }[];
+    const s = screens.find((v) => v.lw > 0 && v.rw > 0 && v.rx > v.lw); // screens without a cutout report empty strips
+    if (!s) return null;
+    const sameSize = (d: Electron.Display) => d.bounds.width === Math.round(s.w) && d.bounds.height === Math.round(s.h);
+    const displays = screen.getAllDisplays();
+    const d = displays.find((v) => v.internal && sameSize(v)) ?? displays.find(sameSize);
+    if (!d) return null;
+    return { x: d.bounds.x + Math.round(s.lw), y: d.bounds.y, width: Math.round(s.rx - s.lw), height: Math.round(s.lh) };
+  } catch { return null; }
+}
+
+/** What the notch renderer needs to draw itself: the collapsed size, and whether it is hiding behind real hardware. */
+function notchGeometry() {
+  return {
+    hardware: !!hwNotch, width: hwNotch?.width ?? NOTCH_COLLAPSED.width, height: hwNotch?.height ?? NOTCH_COLLAPSED.height,
+    touch: touchEnabled && notchEnabled, // the camera only runs while the widget is on
+  };
+}
+function sendNotchGeometry() {
+  if (notch && !notch.isDestroyed()) notch.webContents.send("ns:notch-geometry", notchGeometry());
+}
+
+/** macOS asks the user once (the prompt names the app Northstar was started from); later calls just report the answer. */
+async function cameraAccess(): Promise<boolean> {
+  if (process.platform !== "darwin") return true;
+  const status = systemPreferences.getMediaAccessStatus("camera");
+  if (status === "granted") return true;
+  if (status !== "not-determined") return false;
+  try { return await systemPreferences.askForMediaAccess("camera"); } catch { return false; }
+}
+
 function notchBounds(expanded: boolean) {
+  if (hwNotch) {
+    if (!expanded) return { ...hwNotch };
+    // The panel hangs from the top edge, centered on the cutout, with the cutout's height added on top of the content.
+    const width = NOTCH_EXPANDED.width, height = NOTCH_EXPANDED.height + hwNotch.height;
+    return { x: Math.round(hwNotch.x + hwNotch.width / 2 - width / 2), y: hwNotch.y, width, height };
+  }
   const d = screen.getPrimaryDisplay();
   const s = expanded ? NOTCH_EXPANDED : NOTCH_COLLAPSED;
   return { x: Math.round(d.workArea.x + d.workArea.width / 2 - s.width / 2), y: d.bounds.y, width: s.width, height: s.height };
@@ -173,8 +226,13 @@ function notchBounds(expanded: boolean) {
 
 function createNotch() {
   notchExpanded = false;
+  hwNotch = readHwNotch();
+  const mac = process.platform === "darwin";
   notch = new BrowserWindow({
     ...notchBounds(false), show: false,
+    // macOS: allow the window over the menu bar (y = 0), and make it a panel so opening it on hover
+    // takes keyboard focus for the hand-off box without pulling the user out of the app they are in.
+    ...(mac ? { enableLargerThanScreen: true, type: "panel" } : {}),
     frame: false, transparent: true, backgroundColor: "#00000000", hasShadow: false,
     resizable: false, maximizable: false, minimizable: false, fullscreenable: false,
     skipTaskbar: true, alwaysOnTop: true, focusable: true,
@@ -183,6 +241,7 @@ function createNotch() {
   notch.setAlwaysOnTop(true, "screen-saver");
   notch.setVisibleOnAllWorkspaces(true);
   notch.setIgnoreMouseEvents(false);
+  if (mac) notch.setBounds(notchBounds(false)); // the constructor clamps y below the menu bar; setBounds does not
   notch.webContents.setWindowOpenHandler(({ url }) => { openSafe(url); return { action: "deny" }; });
   notch.once("ready-to-show", () => { if (notch && !notch.isDestroyed() && notchEnabled) notch.showInactive(); });
   const url = rendererUrl("#notch");
@@ -204,6 +263,7 @@ function setNotchEnabled(on: boolean) {
     if (!notch || notch.isDestroyed()) createNotch();
     else { setNotchExpanded(false); notch.showInactive(); }
   } else if (notch && !notch.isDestroyed()) notch.hide();
+  sendNotchGeometry();
 }
 
 // ---------- Ask window (small text window anchored under the bubble) ----------
@@ -305,6 +365,7 @@ function createTray() {
     { label: "Open Northstar", click: showWindow },
     { label: "Hand off a task", accelerator: "Ctrl+Space", click: () => send("ns:command-bar") },
     { label: "Camera notch widget", type: "checkbox", checked: notchEnabled, click: (item) => setNotchEnabled(item.checked) },
+    { label: "Touch the camera to open it", type: "checkbox", checked: touchEnabled, click: (item) => { touchEnabled = item.checked; sendNotchGeometry(); } },
     { type: "separator" },
     { label: "Quit", click: () => { quitting = true; app.quit(); } },
   ]));
@@ -348,6 +409,8 @@ function registerIpc() {
   ipcMain.on("ns:win-min", () => hideWindow());
   ipcMain.on("ns:win-max", () => { if (!win) return; win.isMaximized() ? win.unmaximize() : win.maximize(); });
   ipcMain.on("ns:bubble-command", () => showAsk());
+  ipcMain.on("ns:notch-geometry", (e) => { e.returnValue = notchGeometry(); });
+  ipcMain.handle("ns:camera-access", () => cameraAccess());
   ipcMain.on("ns:notch-expand", () => setNotchExpanded(true));
   ipcMain.on("ns:notch-collapse", () => setNotchExpanded(false));
   ipcMain.on("ns:notch-open-main", (_e, name: unknown) => { setNotchExpanded(false); openMain(name); });
@@ -366,9 +429,16 @@ if (!app.requestSingleInstanceLock()) {
     createBubble();
     createNotch();
     createTray();
-    screen.on("display-metrics-changed", () => {
-      if (notch && !notch.isDestroyed()) notch.setBounds(notchBounds(notchExpanded));
-    });
+    // Resolution change, lid closed, external display plugged in: the cutout may have moved or gone.
+    const refreshNotch = () => {
+      hwNotch = readHwNotch();
+      if (!notch || notch.isDestroyed()) return;
+      notch.setBounds(notchBounds(notchExpanded));
+      sendNotchGeometry();
+    };
+    screen.on("display-metrics-changed", refreshNotch);
+    screen.on("display-added", refreshNotch);
+    screen.on("display-removed", refreshNotch);
     globalShortcut.register("Control+Space", () => toggleAsk());
     globalShortcut.register("Control+Shift+D", () => send("ns:draft"));
   });

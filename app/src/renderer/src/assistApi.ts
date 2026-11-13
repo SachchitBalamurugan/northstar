@@ -2,7 +2,7 @@
 // the tab organizer and the Google connection banner. Same pattern as api.ts: every call falls back to a mock
 // (consistent with the demo student, Maya Chen) when its service is offline.
 import type { Proposal } from "@contracts/types";
-import { SERVICES, approve, type ServiceName } from "./api";
+import { SERVICES, approve, demoFallback, type ServiceName } from "./api";
 
 async function call<T>(svc: ServiceName, path: string, init?: RequestInit, timeoutMs = 2500): Promise<T> {
   const r = await fetch(SERVICES[svc] + path, {
@@ -13,7 +13,7 @@ async function call<T>(svc: ServiceName, path: string, init?: RequestInit, timeo
   return (await r.json()) as T;
 }
 async function req<T>(svc: ServiceName, path: string, init: RequestInit | undefined, fallback: () => T, timeoutMs = 2500): Promise<T> {
-  try { return await call<T>(svc, path, init, timeoutMs); } catch { return fallback(); }
+  try { return await call<T>(svc, path, init, timeoutMs); } catch { return demoFallback(fallback); }
 }
 const post = (body: unknown = {}): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 
@@ -35,7 +35,7 @@ const mockBriefingItems: BriefingItem[] = [
 ];
 export const getBriefing = (estimates: boolean) =>
   req<Briefing>("memory", estimates ? "/briefing" : "/briefing?estimates=0", undefined, () => ({
-    date: now.toISOString().slice(0, 10), greeting: "Good morning, Maya.",
+    date: now.toISOString().slice(0, 10), greeting: "Good morning.",
     summary: "One reply, one study block and one application to finish. The rest can wait.",
     items: mockBriefingItems.map(i => (estimates ? i : { ...i, minutes: undefined })), generatedAt: now.toISOString(),
   }), 8000).then(b => ({ ...b, items: (Array.isArray(b?.items) ? b.items : []).slice(0, 5) }));

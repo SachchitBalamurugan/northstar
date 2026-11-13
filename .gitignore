@@ -14,9 +14,7 @@ inbox/data/credentials.json
 # runtime data
 inbox/data/
 actions/data/
-memory/data/*.db
-memory/data/*.db-*
-memory/data/.umem/
+memory/data/
 # umem init drops host instruction files into the data dir
 memory/data/AGENTS.md
 memory/data/CLAUDE.md

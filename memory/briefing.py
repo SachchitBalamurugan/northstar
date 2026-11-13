@@ -140,6 +140,8 @@ def _calendar_title(ev: models.MemoryEvent) -> str:
 
 
 # ----------------------------------------------------------------------------- resume
+# "25 min on docs.google.com ("R1B Essay 3 draft")" inside a computer-activity summary
+_ACTIVITY_RE = re.compile(r'(\d+) min (?:on|in) ([^,(]+?) \("([^"]+)"\)')
 _STARTED_RE = re.compile(
     r"\b(started|began|begun|half[- ]?(?:done|finished|way)|in progress|not (?:yet )?submitted|"
     r"left off|paused|stopped at|working on|saved (?:a |the )?draft)\b", re.I)
@@ -279,6 +281,33 @@ def _resume_all(events: list[models.MemoryEvent], knowledge: dict[str, str],
             why=f"{file} lists this as unfinished.",
         )
         rows.append(((2, 0.0), item, key))
+
+    # 4. documents the student was actually working in (opt-in computer activity from the actions service)
+    worked: dict[str, list] = {}   # title -> [minutes, where, last event]
+    for e in events:
+        if e.source != "screen" or not insights._has_tag(e, "activity"):
+            continue
+        if (now - insights._event_ts(e)).total_seconds() > 3 * 86400:
+            continue
+        for m in _ACTIVITY_RE.finditer(e.text):
+            title = m.group(3).strip()
+            row = worked.setdefault(title, [0, m.group(2).strip(), e])
+            row[0] += int(m.group(1))
+            if insights._event_ts(e) > insights._event_ts(row[2]):
+                row[2] = e
+    for title, (minutes, where, last) in sorted(worked.items(), key=lambda kv: -kv[1][0])[:2]:
+        key = "act-" + re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:40]
+        # only real stretches of work, and not something still open right now
+        if minutes < 10 or key in seen_keys or key in done or (now - insights._event_ts(last)).total_seconds() < 30 * 60:
+            continue
+        seen_keys.add(key)
+        item = ResumeItem(
+            id=insights._short_id("resume", key), project=title,
+            whereYouStopped=f"You spent about {minutes} min on this in {where}, last on {insights._fmt_due(insights._event_ts(last))}.",
+            nextStep="Open it and do the next small piece.", lastTouched=insights._event_ts(last).isoformat(),
+            why="From what you had open on your computer.",
+        )
+        rows.append(((1, -insights._event_ts(last).timestamp()), item, key))
 
     rows.sort(key=lambda r: r[0])
     return [(item, key) for _, item, key in rows]

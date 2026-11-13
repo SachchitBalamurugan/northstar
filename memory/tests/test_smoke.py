@@ -32,7 +32,7 @@ def client(tmp_path, monkeypatch):
 
 
 def test_full_flow(client):
-    assert client.get("/health").json() == {"ok": True, "service": "memory"}
+    assert client.get("/health").json() == {"ok": True, "service": "memory", "mock": True}
     assert [k["name"] for k in client.get("/knowledge").json()] == config.KNOWLEDGE_FILES
 
     first = client.post("/digest/run").json()

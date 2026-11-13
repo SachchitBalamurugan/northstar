@@ -180,10 +180,11 @@ beforeEach(() => {
 });
 
 describe("configured, MOCK=0, not signed in yet", () => {
-  it("serves fixtures and says why on /auth/status and /health", async () => {
+  it("shows an empty inbox (never demo mail) and says why on /auth/status and /health", async () => {
     await syncGmail();
     await syncCalendar();
-    expect(getCache().emails.length).toBeGreaterThan(2); // demo mail
+    expect(getCache().emails.length).toBe(0); // real mode never shows the demo student's mail
+    expect(getCache().events.length).toBe(0);
     const status = (await app.inject({ method: "GET", url: "/auth/status" })).json();
     expect(status).toMatchObject({ authed: false, configured: true, mock: false, source: "fixtures" });
     expect(status.reason).toMatch(/not connected/i);
@@ -359,7 +360,7 @@ describe("token refresh", () => {
     expect(authStatus().source).toBe("google");
   });
 
-  it("falls back to demo data with a clear reason when Google says the refresh token is dead (invalid_grant)", async () => {
+  it("clears the real data with a clear reason when Google says the refresh token is dead (invalid_grant)", async () => {
     g.getAccessToken.mockImplementationOnce(async () => {
       throw new Error("invalid_grant");
     });
@@ -369,10 +370,9 @@ describe("token refresh", () => {
     const status = authStatus();
     expect(status).toMatchObject({ authed: false, configured: true, source: "fixtures" });
     expect(status.reason).toMatch(/expired or was removed/);
-    // the next sync swaps the real mail for demo data rather than leaving it behind
+    // the next sync removes the real mail rather than leaving it behind, and does not bring in demo mail
     await runSync();
-    expect(getCache().emails.some((e) => e.id.startsWith("real-"))).toBe(false);
-    expect(getCache().emails.length).toBeGreaterThan(2);
+    expect(getCache().emails.length).toBe(0);
   });
 });
 

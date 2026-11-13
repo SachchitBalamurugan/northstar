@@ -17,16 +17,42 @@ async function req<T>(svc: ServiceName, path: string, init: RequestInit | undefi
     });
     if (!r.ok) throw new Error(String(r.status));
     online[svc] = true;
-    return (await r.json()) as T;
+    const body = await r.json();
+    if (path === "/health") { if (body?.mock === true) sawMock = true; else if (body?.mock === false) sawReal = true; }
+    return body as T;
   } catch {
     online[svc] = false;
-    return fallback();
+    if (path === "/health") return fallback();
+    return demoFallback(fallback);
   }
+}
+
+// ---------- demo vs real ----------
+// Sample data is for demos only: when a service says MOCK=1, or when no service has ever answered (previewing the UI
+// on its own). Once any service reports real mode, a failed or slow call shows NOTHING rather than a made-up inbox,
+// calendar or task list, so what is on screen is always the user's own data.
+let sawMock = false, sawReal = false;
+let modeKnown: Promise<unknown> | null = null;
+export const isDemo = () => sawMock || !sawReal;
+/** The same shape with every list emptied and every text blanked. */
+export function emptyOf<T>(v: T): T {
+  if (Array.isArray(v)) return [] as unknown as T;
+  if (typeof v === "string") return "" as unknown as T;
+  if (typeof v === "number") return 0 as unknown as T;
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v as object).map(([k, x]) => [k, emptyOf(x)])) as T;
+  return v;
+}
+/** What a failed call returns: the sample value in a demo, an empty one otherwise. */
+export async function demoFallback<T>(fallback: () => T): Promise<T> {
+  await (modeKnown ??= checkHealth()); // know which mode we are in before deciding
+  return isDemo() ? fallback() : emptyOf(fallback());
 }
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 
 export async function checkHealth(): Promise<Record<ServiceName, boolean>> {
-  await Promise.all((Object.keys(SERVICES) as ServiceName[]).map(s => req(s, "/health", undefined, () => null)));
+  const run = Promise.all((Object.keys(SERVICES) as ServiceName[]).map(s => req(s, "/health", undefined, () => null)));
+  modeKnown ??= run;
+  await run;
   return { ...online };
 }
 
