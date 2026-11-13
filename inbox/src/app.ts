@@ -36,7 +36,7 @@ export async function runSync(): Promise<SyncResult> {
 
 export async function buildServer(opts: { logger?: boolean } = {}) {
   const app = Fastify({ logger: opts.logger === false ? false : { level: process.env.LOG_LEVEL ?? "info" } });
-  await app.register(cors, { origin: [/^https?:\/\/localhost(:\d+)?$/, /^https?:\/\/127\.0\.0\.1(:\d+)?$/] });
+  await app.register(cors, { origin: [/^https?:\/\/localhost(:\d+)?$/, /^https?:\/\/127\.0\.0\.1(:\d+)?$/], methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] });
 
   app.get("/health", async () => ({ ok: true as const, service: "inbox" as const, mock: MOCK }));
   app.post("/sync", async () => runSync());

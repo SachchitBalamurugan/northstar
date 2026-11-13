@@ -11,7 +11,7 @@ export const isOnline = (s: ServiceName) => online[s];
 async function req<T>(svc: ServiceName, path: string, init: RequestInit | undefined, fallback: () => T, timeoutMs = 2500): Promise<T> {
   try {
     const r = await fetch(SERVICES[svc] + path, {
-      ...init, headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+      ...init, headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}), ...(init?.headers || {}) },
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!r.ok) throw new Error(String(r.status));
@@ -67,6 +67,48 @@ export const getTriage = () => req<any>("inbox", "/triage", undefined, () => moc
 export const getToday = () => req<any>("inbox", "/calendar/today", undefined, () => mockToday).then(normEvents);
 /** Events from today through `days` days (Workflow → Calendar). Falls back to today only. */
 export const getRange = (days = 7) => req<any>("inbox", `/calendar/range?days=${days}`, undefined, () => mockToday).then(normEvents);
+// ---- Full calendar (Workflow → Calendar). Offline: an in-memory demo calendar so every feature still works. ----
+export interface CalEventFull extends CalEvent { location?: string; description?: string; allDay?: boolean }
+let demoEvents: CalEventFull[] | null = null;
+function demo(): CalEventFull[] {
+  if (demoEvents) return demoEvents;
+  const d = (dayOff: number, h: number, m = 0) => { const x = new Date(); x.setDate(x.getDate() + dayOff); x.setHours(h, m, 0, 0); return x.toISOString(); };
+  demoEvents = [
+    ...mockToday,
+    { id: "d1", title: "CS 201 lecture", start: d(1, 10), end: d(1, 11, 15), location: "Soda 306" },
+    { id: "d2", title: "Office hours: TA Jordan", start: d(2, 15), end: d(2, 16), location: "Cory 540" },
+    { id: "d3", title: "◎ Study block: CS 201 project", start: d(2, 14), end: d(2, 14, 50), northstar: true },
+    { id: "d4", title: "Stripe online assessment", start: d(3, 18), end: d(3, 19, 30) },
+    { id: "d5", title: "Robotics build night", start: d(4, 19), end: d(4, 21), location: "Etcheverry" },
+    { id: "d6", title: "MATH 220 midterm", start: d(6, 9), end: d(6, 11), location: "Wheeler 150" },
+    { id: "d7", title: "Coffee with Diego", start: d(-1, 16), end: d(-1, 16, 45) },
+    { id: "d8", title: "◎ Study block: MATH 220", start: d(5, 14), end: d(5, 15, 30), northstar: true },
+    { id: "d9", title: "Career fair", start: d(9, 11), end: d(9, 15), location: "MLK Ballroom" },
+  ];
+  return demoEvents;
+}
+export const getEventsBetween = (from: Date, to: Date) =>
+  req<any>("inbox", `/calendar/range?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`, undefined,
+    () => demo().filter(e => new Date(e.start) < to && new Date(e.end) > from))
+    .then((r): CalEventFull[] => (Array.isArray(r) ? r : r.events ?? []).map((e: any) => ({
+      id: e.id, title: e.title, start: e.start, end: e.end, location: e.location, description: e.description ?? e.details,
+      allDay: e.allDay, northstar: e.northstar ?? e.createdByNorthstar ?? false })));
+export const createEvent = (e: { title: string; start: string; end: string; location?: string; details?: string }) =>
+  req<any>("inbox", "/calendar/add", post({ candidate: { ...e, source: "user", sourceLabel: "Created in Northstar" } }), () => {
+    const ev = { id: `local-${Date.now()}`, title: e.title, start: e.start, end: e.end, location: e.location, description: e.details };
+    demo().push(ev); return { ok: true, eventId: ev.id, local: true };
+  }, 15000);
+export const updateEvent = (id: string, patch: { title?: string; start?: string; end?: string; location?: string; details?: string }) =>
+  req<any>("inbox", `/calendar/events/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) }, () => {
+    const ev = demo().find(x => x.id === id);
+    if (ev) Object.assign(ev, { ...patch, description: patch.details ?? ev.description });
+    return { ok: true, local: true };
+  }, 15000);
+export const deleteEvent = (id: string) =>
+  req<any>("inbox", `/calendar/events/${encodeURIComponent(id)}`, { method: "DELETE" }, () => {
+    demoEvents = demo().filter(x => x.id !== id); return { ok: true, local: true };
+  }, 15000);
+
 export const draftReply = (emailId: string) => req<Proposal>("inbox", "/draft", post({ emailId }), () => mockProposals[0], 30000).then(normProposal);
 export const getAuthUrl = () => req<{ url: string }>("inbox", "/auth/url", undefined, () => ({ url: "" }));
 export const getAuthStatus = () => req<{ authed: boolean; mock: boolean }>("inbox", "/auth/status", undefined, () => ({ authed: false, mock: true }));
