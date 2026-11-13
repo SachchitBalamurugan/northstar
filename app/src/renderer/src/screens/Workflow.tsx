@@ -5,6 +5,7 @@ import { useUI, type WorkflowTab } from "@/store";
 import { Heading, Lead } from "@/components/ui";
 import Inbox from "./Inbox";
 import CalendarApp from "./calendar/CalendarApp";
+import Discover from "./discover/Discover";
 
 const TABS: { id: WorkflowTab; label: string; Icon: typeof InboxIcon }[] = [
   { id: "inbox", label: "Inbox", Icon: InboxIcon },
@@ -33,23 +34,9 @@ export default function Workflow() {
         <motion.div key={workflowTab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2, ease: "easeOut" }}>
           {workflowTab === "inbox" && <Inbox />}
           {workflowTab === "calendar" && <CalendarApp />}
-          {workflowTab === "discover" && <DiscoverTab />}
+          {workflowTab === "discover" && <Discover />}
         </motion.div>
       </AnimatePresence>
-    </div>
-  );
-}
-
-/* ---------------- Discover (placeholder: function to be specified) ---------------- */
-
-function DiscoverTab() {
-  return (
-    <div>
-      <Heading eyebrow="Discover">Something new<br />is coming here.</Heading>
-      <Lead className="max-w-[46ch]">Discover is being set up. Check back soon.</Lead>
-      <div className="mt-10 flex h-[260px] items-center justify-center rounded-[18px] border-[0.8px] border-dashed border-line">
-        <Compass size={28} className="text-faint" />
-      </div>
     </div>
   );
 }

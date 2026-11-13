@@ -61,3 +61,8 @@ export interface TriagedEmail {
   bucket: "needsYou" | "fyi" | "ignore"; urgency: 1 | 2 | 3; senderRole: SenderRole;
   deadlines: Deadline[]; asks: string[]; why: string;
 }
+
+// Discover (AI research). FRONTEND ONLY today: app/src/renderer/src/discover.ts simulates the run.
+// Backend to implement later (any service, e.g. actions :7703):
+//   POST /discover/run {query, when: "any"|"week"|"month", where: "any"|"campus"|"online"}
+//   → text/event-stream of DiscoverEvent (see discover.ts): plan → step/source/result … → agent_done → done
