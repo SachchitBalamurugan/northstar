@@ -31,6 +31,10 @@ const api = {
   onAskBlur: (cb: () => void) => { ipcRenderer.on("ns:ask-blur", cb); return () => ipcRenderer.removeListener("ns:ask-blur", cb); },
   // Maximize: open the main window on a given screen
   openMain: (screen: string) => ipcRenderer.send("ns:open-main", screen),
+  // Camera notch widget
+  notchExpand: () => ipcRenderer.send("ns:notch-expand"),
+  notchCollapse: () => ipcRenderer.send("ns:notch-collapse"),
+  notchOpenMain: (screen: string) => ipcRenderer.send("ns:notch-open-main", screen),
   onNavigate: (cb: (screen: string) => void) => {
     const h = (_e: unknown, s: string) => cb(s);
     ipcRenderer.on("ns:navigate", h); return () => ipcRenderer.removeListener("ns:navigate", h);

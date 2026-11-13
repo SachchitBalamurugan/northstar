@@ -144,7 +144,7 @@ function createBubble() {
   const wa = screen.getPrimaryDisplay().workArea;
   bubble = new BrowserWindow({
     width: BUBBLE, height: BUBBLE,
-    x: Math.round(wa.x + wa.width / 2 - BUBBLE / 2), y: wa.y + 10,
+    x: Math.round(wa.x + wa.width / 2 + 150), y: wa.y + 6, // orb sits just right of the camera notch
     frame: false, transparent: true, backgroundColor: "#00000000", hasShadow: false,
     resizable: false, maximizable: false, minimizable: false, fullscreenable: false,
     skipTaskbar: true, alwaysOnTop: true,
@@ -156,6 +156,54 @@ function createBubble() {
   if (url) bubble.loadURL(url);
   else bubble.loadFile(join(__dirname, "../renderer/index.html"), { hash: "bubble" });
   bubble.on("closed", () => { bubble = null; });
+}
+
+// ---------- camera notch (Dynamic Island-style strip at the very top-center, under the webcam) ----------
+let notch: BrowserWindow | null = null;
+let notchExpanded = false;
+let notchEnabled = true;
+const NOTCH_COLLAPSED = { width: 220, height: 10 };
+const NOTCH_EXPANDED = { width: 460, height: 340 };
+
+function notchBounds(expanded: boolean) {
+  const d = screen.getPrimaryDisplay();
+  const s = expanded ? NOTCH_EXPANDED : NOTCH_COLLAPSED;
+  return { x: Math.round(d.workArea.x + d.workArea.width / 2 - s.width / 2), y: d.bounds.y, width: s.width, height: s.height };
+}
+
+function createNotch() {
+  notchExpanded = false;
+  notch = new BrowserWindow({
+    ...notchBounds(false), show: false,
+    frame: false, transparent: true, backgroundColor: "#00000000", hasShadow: false,
+    resizable: false, maximizable: false, minimizable: false, fullscreenable: false,
+    skipTaskbar: true, alwaysOnTop: true, focusable: true,
+    webPreferences: { preload: join(__dirname, "../preload/index.js"), sandbox: false, backgroundThrottling: false },
+  });
+  notch.setAlwaysOnTop(true, "screen-saver");
+  notch.setVisibleOnAllWorkspaces(true);
+  notch.setIgnoreMouseEvents(false);
+  notch.webContents.setWindowOpenHandler(({ url }) => { openSafe(url); return { action: "deny" }; });
+  notch.once("ready-to-show", () => { if (notch && !notch.isDestroyed() && notchEnabled) notch.showInactive(); });
+  const url = rendererUrl("#notch");
+  if (url) notch.loadURL(url);
+  else notch.loadFile(join(__dirname, "../renderer/index.html"), { hash: "notch" });
+  notch.on("closed", () => { notch = null; });
+}
+
+function setNotchExpanded(expanded: boolean) {
+  if (!notch || notch.isDestroyed()) return;
+  notchExpanded = expanded;
+  notch.setBounds(notchBounds(expanded));
+  if (expanded) notch.focus();
+}
+
+function setNotchEnabled(on: boolean) {
+  notchEnabled = on;
+  if (on) {
+    if (!notch || notch.isDestroyed()) createNotch();
+    else { setNotchExpanded(false); notch.showInactive(); }
+  } else if (notch && !notch.isDestroyed()) notch.hide();
 }
 
 // ---------- Ask window (small text window anchored under the bubble) ----------
@@ -256,6 +304,7 @@ function createTray() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open Northstar", click: showWindow },
     { label: "Hand off a task", accelerator: "Ctrl+Space", click: () => send("ns:command-bar") },
+    { label: "Camera notch widget", type: "checkbox", checked: notchEnabled, click: (item) => setNotchEnabled(item.checked) },
     { type: "separator" },
     { label: "Quit", click: () => { quitting = true; app.quit(); } },
   ]));
@@ -299,6 +348,9 @@ function registerIpc() {
   ipcMain.on("ns:win-min", () => hideWindow());
   ipcMain.on("ns:win-max", () => { if (!win) return; win.isMaximized() ? win.unmaximize() : win.maximize(); });
   ipcMain.on("ns:bubble-command", () => showAsk());
+  ipcMain.on("ns:notch-expand", () => setNotchExpanded(true));
+  ipcMain.on("ns:notch-collapse", () => setNotchExpanded(false));
+  ipcMain.on("ns:notch-open-main", (_e, name: unknown) => { setNotchExpanded(false); openMain(name); });
 }
 
 // ---------- lifecycle ----------
@@ -312,7 +364,11 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc();
     createWindow();
     createBubble();
+    createNotch();
     createTray();
+    screen.on("display-metrics-changed", () => {
+      if (notch && !notch.isDestroyed()) notch.setBounds(notchBounds(notchExpanded));
+    });
     globalShortcut.register("Control+Space", () => toggleAsk());
     globalShortcut.register("Control+Shift+D", () => send("ns:draft"));
   });
