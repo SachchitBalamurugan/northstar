@@ -83,33 +83,45 @@ function fadeWindow(w: BrowserWindow, from: number, to: number, ms: number, done
   }, 8);
 }
 
+// Zoom origin = the floating orb's center, in main-window coordinates (so the window grows out of / shrinks into the orb).
+function orbOrigin() {
+  if (!win || !bubble || bubble.isDestroyed()) return { x: 0, y: 0 };
+  const w = win.getBounds(), b = bubble.getBounds();
+  return { x: b.x + b.width / 2 - w.x, y: b.y + b.height / 2 - w.y };
+}
+
 let hiding = false;
+let hideTimer: NodeJS.Timeout | null = null;
 function showWindow() {
   if (!win || win.isDestroyed()) { createWindow(); return; }
+  if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
   hiding = false;
   if (win.isMinimized()) win.restore();
-  const wasVisible = win.isVisible() && win.getOpacity() > 0.99;
-  if (!wasVisible) { win.setOpacity(0); win.webContents.send("ns:pop-in"); }
+  if (!win.isVisible()) win.webContents.send("ns:pop-in", orbOrigin());
   win.show();
   win.focus();
-  if (!wasVisible) fadeWindow(win, 0, 1, 220);
+}
+
+function finishHide() {
+  if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+  if (hiding && win && !win.isDestroyed()) win.hide();
+  hiding = false;
 }
 
 function hideWindow() {
   const w = win;
   if (!w || w.isDestroyed() || !w.isVisible() || hiding) return;
   hiding = true;
-  w.webContents.send("ns:pop-out");
-  fadeWindow(w, w.getOpacity(), 0, 170, () => { if (hiding) { w.hide(); hiding = false; } });
+  w.webContents.send("ns:pop-out", orbOrigin());
+  hideTimer = setTimeout(finishHide, 450); // fallback if the renderer never reports back
 }
 
 function createWindow() {
   win = new BrowserWindow({
     width: 1180, height: 780, minWidth: 900, minHeight: 620,
-    backgroundColor: "#000000",
-    titleBarStyle: "hidden",
-    titleBarOverlay: { color: "#00000000", symbolColor: "#A5A5AD", height: 44 },
-    webPreferences: { preload: join(__dirname, "../preload/index.js"), sandbox: false },
+    // Transparent + frameless so the UI can zoom out of the orb with the desktop visible around it.
+    frame: false, transparent: true, backgroundColor: "#00000000", hasShadow: false, show: false,
+    webPreferences: { preload: join(__dirname, "../preload/index.js"), sandbox: false, backgroundThrottling: false },
   });
   win.webContents.setWindowOpenHandler(({ url }) => { openSafe(url); return { action: "deny" }; });
   win.on("close", (e) => {
@@ -202,6 +214,10 @@ function registerIpc() {
     if (Number.isFinite(nx) && Number.isFinite(ny)) bubble.setBounds({ x: nx, y: ny, width: BUBBLE, height: BUBBLE });
   });
   ipcMain.on("ns:bubble-click", () => toggleMain());
+  ipcMain.on("ns:popped-out", () => finishHide());
+  ipcMain.on("ns:win-close", () => hideWindow());
+  ipcMain.on("ns:win-min", () => hideWindow());
+  ipcMain.on("ns:win-max", () => { if (!win) return; win.isMaximized() ? win.unmaximize() : win.maximize(); });
   ipcMain.on("ns:bubble-command", () => send("ns:command-bar"));
 }
 
@@ -215,8 +231,6 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     registerIpc();
     createWindow();
-    win?.once("ready-to-show", () => win?.hide());
-    win?.hide();
     createBubble();
     createTray();
     globalShortcut.register("Control+Space", () => send("ns:command-bar"));

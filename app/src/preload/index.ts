@@ -7,8 +7,18 @@ const api = {
   setBadge: (n: number) => ipcRenderer.send("ns:badge", n),
   notify: (title: string, body: string) => ipcRenderer.send("ns:notify", { title, body }),
   openExternal: (url: string) => ipcRenderer.send("ns:open", url),
-  onPopIn: (cb: () => void) => { ipcRenderer.on("ns:pop-in", cb); return () => ipcRenderer.removeListener("ns:pop-in", cb); },
-  onPopOut: (cb: () => void) => { ipcRenderer.on("ns:pop-out", cb); return () => ipcRenderer.removeListener("ns:pop-out", cb); },
+  onPopIn: (cb: (o: { x: number; y: number }) => void) => {
+    const h = (_e: unknown, o: { x: number; y: number }) => cb(o);
+    ipcRenderer.on("ns:pop-in", h); return () => ipcRenderer.removeListener("ns:pop-in", h);
+  },
+  onPopOut: (cb: (o: { x: number; y: number }) => void) => {
+    const h = (_e: unknown, o: { x: number; y: number }) => cb(o);
+    ipcRenderer.on("ns:pop-out", h); return () => ipcRenderer.removeListener("ns:pop-out", h);
+  },
+  poppedOut: () => ipcRenderer.send("ns:popped-out"),
+  winClose: () => ipcRenderer.send("ns:win-close"),
+  winMin: () => ipcRenderer.send("ns:win-min"),
+  winMax: () => ipcRenderer.send("ns:win-max"),
   // Floating bubble
   bubbleMove: (x: number, y: number) => ipcRenderer.send("ns:bubble-move", x, y),
   bubbleClick: () => ipcRenderer.send("ns:bubble-click"),

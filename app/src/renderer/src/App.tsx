@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useAnimationControls } from "framer-motion";
 import { useUI, type Screen } from "./store";
 import { checkHealth, getPendingProposals, type ServiceName } from "./api";
@@ -24,18 +24,46 @@ export default function App() {
   const { screen, setScreen, focusTask, onboarded, openCommand, pendingCount, setPendingCount } = useUI();
   const [health, setHealth] = useState<Record<ServiceName, boolean>>({ memory: false, inbox: false, actions: false });
   const pop = useAnimationControls();
+  const inElectron = !!window.northstar;
+  const [origin, setOrigin] = useState("50% 0%");
+  const state = useRef<"hidden" | "shown">(inElectron ? "hidden" : "shown");
 
-  // Pop up from the floating orb (top-center) when the window opens; pop out when it hides.
+  // Zoom the whole window out of the floating orb when it opens, and back into the orb when it hides.
   useEffect(() => {
-    const offIn = window.northstar?.onPopIn(() => {
-      pop.set({ opacity: 0, scale: 0.94, y: -18, filter: "blur(6px)" });
-      pop.start({ opacity: 1, scale: 1, y: 0, filter: "blur(0px)", transition: { type: "spring", stiffness: 320, damping: 30, mass: 0.8 } });
+    if (!inElectron) return;
+    const zoomIn = (o?: { x: number; y: number }) => {
+      if (o) setOrigin(`${o.x}px ${o.y}px`);
+      state.current = "shown";
+      pop.set({ scale: 0.04, opacity: 0, borderRadius: 400 });
+      pop.start({
+        scale: 1, borderRadius: 16, opacity: 1,
+        transition: { scale: { duration: 0.5, ease: [0.16, 1, 0.3, 1] }, borderRadius: { duration: 0.5, ease: [0.16, 1, 0.3, 1] }, opacity: { duration: 0.16, ease: "easeOut" } },
+      });
+    };
+    const offIn = window.northstar!.onPopIn(zoomIn);
+    const offOut = window.northstar!.onPopOut(async (o) => {
+      if (o) setOrigin(`${o.x}px ${o.y}px`);
+      state.current = "hidden";
+      await pop.start({
+        scale: 0.04, borderRadius: 400, opacity: 0,
+        transition: { scale: { duration: 0.32, ease: [0.7, 0, 0.84, 0] }, borderRadius: { duration: 0.32, ease: [0.7, 0, 0.84, 0] }, opacity: { duration: 0.14, delay: 0.18, ease: "easeIn" } },
+      });
+      window.northstar!.poppedOut();
     });
-    const offOut = window.northstar?.onPopOut(() => {
-      pop.start({ opacity: 0, scale: 0.95, y: -14, filter: "blur(4px)", transition: { duration: 0.17, ease: [0.4, 0, 1, 1] } });
-    });
-    return () => { offIn?.(); offOut?.(); };
+    // Fallback: if the window became visible without a pop-in event (first launch), zoom in from the top.
+    const onFocus = () => { if (state.current === "hidden") zoomIn(); };
+    window.addEventListener("focus", onFocus);
+    return () => { offIn(); offOut(); window.removeEventListener("focus", onFocus); };
   }, []);
+
+  const shell = (children: React.ReactNode) => (
+    <motion.div animate={pop} initial={inElectron ? { scale: 0.04, opacity: 0, borderRadius: 400 } : false}
+      style={{ transformOrigin: origin, willChange: "transform, opacity" }}
+      className={`relative flex h-full flex-col overflow-hidden bg-bg ${inElectron ? "rounded-[16px] border-[0.8px] border-white/10" : ""}`}>
+      {children}
+      {inElectron && <WindowControls />}
+    </motion.div>
+  );
 
   useEffect(() => {
     const tick = async () => {
@@ -51,15 +79,13 @@ export default function App() {
 
   const live = Object.values(health).filter(Boolean).length;
 
-  if (!onboarded) return (
-    <motion.div animate={pop} style={{ transformOrigin: "50% 0%" }} className="h-full"><AmbientGlow /><Onboarding /></motion.div>
-  );
+  if (!onboarded) return shell(<><AmbientGlow /><div className="drag absolute inset-x-0 top-0 h-12" /><Onboarding /></>);
 
-  return (
-    <motion.div animate={pop} style={{ transformOrigin: "50% 0%", willChange: "transform, opacity" }} className="relative flex h-full flex-col">
+  return shell(
+    <>
       <AmbientGlow />
-      {/* Top bar: logo · glass pill nav · primary CTA. Right 140px kept clear for Windows caption buttons. */}
-      <header className="drag relative z-20 flex h-[84px] shrink-0 items-center px-8 pr-[156px]">
+      {/* Top bar: logo · glass pill nav · primary CTA. Right side kept clear for our window controls. */}
+      <header className="drag relative z-20 flex h-[84px] shrink-0 items-center px-8 pr-[132px]">
         <button onClick={() => setScreen("now")} className="no-drag flex items-center gap-3">
           <LogoMark />
           <span className="display text-[24px] tracking-[-0.03em]">Northstar</span>
@@ -107,6 +133,24 @@ export default function App() {
       </main>
       <AnimatePresence>{focusTask && <Focus />}</AnimatePresence>
       <CommandBar />
-    </motion.div>
+    </>
+  );
+}
+
+/** Minimal window buttons for the frameless window. Close/minimize zoom back into the orb. */
+function WindowControls() {
+  const btn = "no-drag flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors duration-150 hover:bg-white/10 hover:text-ink";
+  return (
+    <div className="absolute top-[26px] right-5 z-30 flex items-center gap-1">
+      <button aria-label="Minimize" className={btn} onClick={() => window.northstar?.winMin()}>
+        <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+      </button>
+      <button aria-label="Maximize" className={btn} onClick={() => window.northstar?.winMax()}>
+        <svg width="12" height="12" viewBox="0 0 12 12"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.3" /></svg>
+      </button>
+      <button aria-label="Close" className={`${btn} hover:bg-[#E26D45]/80 hover:text-black`} onClick={() => window.northstar?.winClose()}>
+        <svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+      </button>
+    </div>
   );
 }
