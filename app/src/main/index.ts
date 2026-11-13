@@ -68,11 +68,39 @@ function badgeDot(): Electron.NativeImage {
 }
 
 // ---------- window ----------
+// Smooth window opacity tween (Windows/macOS support setOpacity). Paired with a renderer scale animation.
+let fadeTimer: NodeJS.Timeout | null = null;
+function fadeWindow(w: BrowserWindow, from: number, to: number, ms: number, done?: () => void) {
+  if (fadeTimer) clearInterval(fadeTimer);
+  const start = Date.now();
+  w.setOpacity(from);
+  fadeTimer = setInterval(() => {
+    if (w.isDestroyed()) { clearInterval(fadeTimer!); fadeTimer = null; return; }
+    const t = Math.min(1, (Date.now() - start) / ms);
+    const e = to > from ? 1 - Math.pow(1 - t, 3) : t * t * t; // easeOutCubic in, easeInCubic out
+    w.setOpacity(from + (to - from) * e);
+    if (t >= 1) { clearInterval(fadeTimer!); fadeTimer = null; done?.(); }
+  }, 8);
+}
+
+let hiding = false;
 function showWindow() {
   if (!win || win.isDestroyed()) { createWindow(); return; }
+  hiding = false;
   if (win.isMinimized()) win.restore();
+  const wasVisible = win.isVisible() && win.getOpacity() > 0.99;
+  if (!wasVisible) { win.setOpacity(0); win.webContents.send("ns:pop-in"); }
   win.show();
   win.focus();
+  if (!wasVisible) fadeWindow(win, 0, 1, 220);
+}
+
+function hideWindow() {
+  const w = win;
+  if (!w || w.isDestroyed() || !w.isVisible() || hiding) return;
+  hiding = true;
+  w.webContents.send("ns:pop-out");
+  fadeWindow(w, w.getOpacity(), 0, 170, () => { if (hiding) { w.hide(); hiding = false; } });
 }
 
 function createWindow() {
@@ -85,7 +113,7 @@ function createWindow() {
   });
   win.webContents.setWindowOpenHandler(({ url }) => { openSafe(url); return { action: "deny" }; });
   win.on("close", (e) => {
-    if (!quitting) { e.preventDefault(); win?.hide(); }
+    if (!quitting) { e.preventDefault(); hideWindow(); }
   });
   win.on("closed", () => { win = null; });
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -94,7 +122,7 @@ function createWindow() {
 
 // ---------- floating bubble (Clicky-style: lives at the top of the screen, drag to move, click to open) ----------
 let bubble: BrowserWindow | null = null;
-const BUBBLE = 72;
+const BUBBLE = 88;
 
 function rendererUrl(hash = "") {
   return process.env.ELECTRON_RENDERER_URL ? process.env.ELECTRON_RENDERER_URL + hash : null;
@@ -119,7 +147,7 @@ function createBubble() {
 }
 
 function toggleMain() {
-  if (win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()) win.hide();
+  if (win && !win.isDestroyed() && win.isVisible() && !win.isMinimized() && !hiding) hideWindow();
   else showWindow();
 }
 

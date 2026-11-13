@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useAnimationControls } from "framer-motion";
 import { useUI, type Screen } from "./store";
 import { checkHealth, getPendingProposals, type ServiceName } from "./api";
 import { AmbientGlow, GlassPill, LogoMark, PrimaryButton, Kbd } from "./components/ui";
@@ -23,6 +23,19 @@ declare global { interface Window { northstar?: import("../../preload/index").No
 export default function App() {
   const { screen, setScreen, focusTask, onboarded, openCommand, pendingCount, setPendingCount } = useUI();
   const [health, setHealth] = useState<Record<ServiceName, boolean>>({ memory: false, inbox: false, actions: false });
+  const pop = useAnimationControls();
+
+  // Pop up from the floating orb (top-center) when the window opens; pop out when it hides.
+  useEffect(() => {
+    const offIn = window.northstar?.onPopIn(() => {
+      pop.set({ opacity: 0, scale: 0.94, y: -18, filter: "blur(6px)" });
+      pop.start({ opacity: 1, scale: 1, y: 0, filter: "blur(0px)", transition: { type: "spring", stiffness: 320, damping: 30, mass: 0.8 } });
+    });
+    const offOut = window.northstar?.onPopOut(() => {
+      pop.start({ opacity: 0, scale: 0.95, y: -14, filter: "blur(4px)", transition: { duration: 0.17, ease: [0.4, 0, 1, 1] } });
+    });
+    return () => { offIn?.(); offOut?.(); };
+  }, []);
 
   useEffect(() => {
     const tick = async () => {
@@ -36,12 +49,14 @@ export default function App() {
     return () => { clearInterval(t); offCmd?.(); window.removeEventListener("keydown", onKey); };
   }, []);
 
-  if (!onboarded) return <><AmbientGlow /><Onboarding /></>;
-
   const live = Object.values(health).filter(Boolean).length;
 
+  if (!onboarded) return (
+    <motion.div animate={pop} style={{ transformOrigin: "50% 0%" }} className="h-full"><AmbientGlow /><Onboarding /></motion.div>
+  );
+
   return (
-    <div className="relative flex h-full flex-col">
+    <motion.div animate={pop} style={{ transformOrigin: "50% 0%", willChange: "transform, opacity" }} className="relative flex h-full flex-col">
       <AmbientGlow />
       {/* Top bar: logo · glass pill nav · primary CTA. Right 140px kept clear for Windows caption buttons. */}
       <header className="drag relative z-20 flex h-[84px] shrink-0 items-center px-8 pr-[156px]">
@@ -92,6 +107,6 @@ export default function App() {
       </main>
       <AnimatePresence>{focusTask && <Focus />}</AnimatePresence>
       <CommandBar />
-    </div>
+    </motion.div>
   );
 }

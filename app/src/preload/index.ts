@@ -7,6 +7,8 @@ const api = {
   setBadge: (n: number) => ipcRenderer.send("ns:badge", n),
   notify: (title: string, body: string) => ipcRenderer.send("ns:notify", { title, body }),
   openExternal: (url: string) => ipcRenderer.send("ns:open", url),
+  onPopIn: (cb: () => void) => { ipcRenderer.on("ns:pop-in", cb); return () => ipcRenderer.removeListener("ns:pop-in", cb); },
+  onPopOut: (cb: () => void) => { ipcRenderer.on("ns:pop-out", cb); return () => ipcRenderer.removeListener("ns:pop-out", cb); },
   // Floating bubble
   bubbleMove: (x: number, y: number) => ipcRenderer.send("ns:bubble-move", x, y),
   bubbleClick: () => ipcRenderer.send("ns:bubble-click"),
