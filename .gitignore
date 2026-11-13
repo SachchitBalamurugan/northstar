@@ -1,7 +1,33 @@
-node_modules
-out
-dist
+# node
+node_modules/
+out/
+dist/
+inbox/dist/
+
+# secrets / tokens (never commit)
 .env
-data/
+*/.env
 tokens.json
+inbox/data/tokens.json
+inbox/data/credentials.json
+
+# runtime data
+inbox/data/
+actions/data/
+memory/data/*.db
+memory/data/*.db-*
+memory/data/.umem/
+# umem init drops host instruction files into the data dir
+memory/data/AGENTS.md
+memory/data/CLAUDE.md
+
+# python
+memory/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# os / editor
 *.log
+.DS_Store
+Thumbs.db

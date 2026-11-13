@@ -8,9 +8,12 @@ export interface MemoryEvent {
   tags?: string[]; refs?: { emailId?: string; eventId?: string; url?: string };
 }
 
+export type ProposalType = "send_reply" | "create_event" | "fill_form" | "submit_form" | "unsubscribe" | "task";
+export type ProposalStatus = "pending" | "approved" | "rejected" | "done" | "failed";
+
 export interface Proposal {
   id: string; agent: Agent; createdAt: string;
-  type: "send_reply" | "create_event" | "fill_form" | "submit_form" | "unsubscribe" | "task";
+  type: ProposalType;
   title: string; // ≤ 60 chars, plain language
   why: string;   // one sentence, cites memory
   payload: any; urgency: 1 | 2 | 3; dueAt?: string;
@@ -42,4 +45,19 @@ export interface EventCandidate {
   sourceLabel: string;     // e.g. "Email from Stripe Recruiting", "classes.md"
   confidence: number;      // 0..1
   conflict?: string;       // e.g. "Overlaps Robotics club"
+}
+
+// ---- Backend response shapes (Machines 2 & 3, merged from triage-llm) ----
+export interface HealthResponse { ok: true; service: Agent }
+export interface ContextRequest { query: string; k?: number }
+export interface ContextResponse { snippets: MemoryEvent[]; knowledge: { file: string; content: string }[]; umem?: string }
+export interface InsightsResponse { nextThing: NextThing; cards: Proposal[] }
+export interface TriageResponse { needsYou: TriagedEmail[]; fyi: TriagedEmail[]; ignored: number }
+
+export type SenderRole = "prof" | "ta" | "recruiter" | "club" | "admin" | "promo" | "peer" | "other";
+export interface Deadline { title: string; dueAt: string; course?: string; effortMinutes: number; emailId?: string }
+export interface TriagedEmail {
+  emailId: string; from: string; subject: string; receivedAt: string; snippet: string;
+  bucket: "needsYou" | "fyi" | "ignore"; urgency: 1 | 2 | 3; senderRole: SenderRole;
+  deadlines: Deadline[]; asks: string[]; why: string;
 }

@@ -1,0 +1,85 @@
+{
+  "anchor": "2026-11-13T08:00:00-08:00",
+  "items": [
+    {
+      "id": "e001",
+      "title": "CS61B Lecture",
+      "start": "2026-11-13T10:00:00-08:00",
+      "end": "2026-11-13T11:00:00-08:00",
+      "location": "Wheeler 150",
+      "description": "MWF 10-11. Lecture 33: Gitlet merge walkthrough."
+    },
+    {
+      "id": "e002",
+      "title": "◎ CS70 HW",
+      "start": "2026-11-14T14:00:00-08:00",
+      "end": "2026-11-14T14:50:00-08:00",
+      "description": "Focus block for CS70 HW 11 (Markov chains). Created by Northstar.",
+      "createdByNorthstar": true
+    },
+    {
+      "id": "e003",
+      "title": "CS61B Lecture",
+      "start": "2026-11-16T10:00:00-08:00",
+      "end": "2026-11-16T11:00:00-08:00",
+      "location": "Wheeler 150",
+      "description": "MWF 10-11."
+    },
+    {
+      "id": "e004",
+      "title": "CS70 Lecture",
+      "start": "2026-11-17T12:30:00-08:00",
+      "end": "2026-11-17T14:00:00-08:00",
+      "location": "Pimentel 1",
+      "description": "Tue/Thu 12:30-2."
+    },
+    {
+      "id": "e005",
+      "title": "EE16A Lab",
+      "start": "2026-11-17T14:00:00-08:00",
+      "end": "2026-11-17T17:00:00-08:00",
+      "location": "Cory 125",
+      "description": "Tuesdays are lab days. Lab 8 touchscreen checkoff."
+    },
+    {
+      "id": "e006",
+      "title": "Cal Robotics meeting",
+      "start": "2026-11-17T19:00:00-08:00",
+      "end": "2026-11-17T20:30:00-08:00",
+      "location": "Cory 299",
+      "description": "Weekly club meeting; sub-team updates, gripper demo."
+    },
+    {
+      "id": "e007",
+      "title": "English R1B Section",
+      "start": "2026-11-18T13:00:00-08:00",
+      "end": "2026-11-18T14:00:00-08:00",
+      "location": "Dwinelle 187",
+      "description": "Peer review of Essay 3 drafts; bring a printed copy."
+    },
+    {
+      "id": "e008",
+      "title": "Dentist - Dr. Shah",
+      "start": "2026-11-19T15:30:00-08:00",
+      "end": "2026-11-19T16:30:00-08:00",
+      "location": "Shah Family Dental, Shattuck Ave",
+      "description": "Cleaning. Call (510) 555-0142 to reschedule."
+    },
+    {
+      "id": "e009",
+      "title": "CS70 Lecture",
+      "start": "2026-11-19T12:30:00-08:00",
+      "end": "2026-11-19T14:00:00-08:00",
+      "location": "Pimentel 1",
+      "description": "Tue/Thu 12:30-2."
+    },
+    {
+      "id": "e010",
+      "title": "Big Game Week",
+      "start": "2026-11-21T00:00:00-08:00",
+      "end": "2026-11-22T00:00:00-08:00",
+      "allDay": true,
+      "description": "Cal vs Stanford. Campus events all day; expect crowds around Memorial Stadium."
+    }
+  ]
+}

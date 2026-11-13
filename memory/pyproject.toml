@@ -1,0 +1,23 @@
+[project]
+name = "northstar-memory"
+version = "0.1.0"
+description = "Northstar Machine 2: shared memory (umem + SQLite + Knowledge .md) + insight engine"
+requires-python = ">=3.12"
+dependencies = [
+    "apscheduler>=3.11.3",
+    "fastapi>=0.162.7",
+    "httpx>=0.28.1",
+    "openai>=3.50.0",
+    "pydantic>=2.14.3",
+    "python-dotenv>=1.2.4",
+    "universal-memory>=0.6.4",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]

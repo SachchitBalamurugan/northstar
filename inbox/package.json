@@ -1,0 +1,27 @@
+{
+  "name": "northstar-inbox",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Northstar Machine 3: Gmail + Google Calendar triage, deadlines, auto-scheduling, drafts",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.4.3",
+    "dotenv": "^18.0.10",
+    "fastify": "^5.12.8",
+    "googleapis": "^190.0.0",
+    "openai": "^7.56.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.0"
+  }
+}

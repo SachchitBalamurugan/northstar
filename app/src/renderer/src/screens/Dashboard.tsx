@@ -58,7 +58,7 @@ export default function Dashboard() {
       </Heading>
 
       {!data ? <Skeleton /> : (
-        <div className="grid grid-cols-[1.35fr_1fr] gap-6">
+        <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] gap-6">
           {/* Left: ranked priorities */}
           <div className="flex flex-col gap-5">
             <AnimatePresence mode="popLayout">
@@ -300,7 +300,7 @@ function DayBar() {
 
 function Skeleton() {
   return (
-    <div className="grid grid-cols-[1.35fr_1fr] gap-6">
+    <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] gap-6">
       <div className="h-[220px] animate-pulse rounded-[18px] bg-white/[0.04]" />
       <div className="h-[220px] animate-pulse rounded-[18px] bg-white/[0.04]" />
     </div>

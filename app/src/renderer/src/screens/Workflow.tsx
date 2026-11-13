@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Inbox as InboxIcon, CalendarDays, Compass, CalendarPlus, Clock } from "lucide-react";
 import type { CalEvent } from "@contracts/types";
 import { useUI, type WorkflowTab } from "@/store";
-import { getToday, getPendingProposals } from "@/api";
+import { getRange, getPendingProposals } from "@/api";
 import { Heading, Lead, Window, Chip, clock } from "@/components/ui";
 import Inbox from "./Inbox";
 import { CalendarAgentBox } from "./Dashboard";
@@ -53,7 +53,7 @@ function CalendarTab() {
 
   useEffect(() => {
     // Today's calendar + Northstar's suggested blocks (pending create_event proposals) across the week.
-    Promise.all([getToday(), getPendingProposals()]).then(([today, props]) => {
+    Promise.all([getRange(7), getPendingProposals()]).then(([today, props]) => {
       const planned: CalEvent[] = props
         .filter(p => p.type === "create_event" && p.payload?.start && p.payload?.end)
         .map(p => ({ id: `p-${p.id}`, title: p.title, start: p.payload.start, end: p.payload.end, northstar: true }));
@@ -97,7 +97,7 @@ function CalendarTab() {
         })}
       </div>
 
-      <div className="grid grid-cols-[1.35fr_1fr] gap-6">
+      <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] gap-6">
         <Window title={isToday ? "Today" : sel.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}
           icon={<CalendarDays size={15} />} meta={`${dayEvents.length} events · ${hours.toFixed(1)}h`}>
           <ul className="px-5 py-2">
