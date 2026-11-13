@@ -1,4 +1,4 @@
-# Maya
+# Sachchit
 
 - CS sophomore at UC Berkeley, fall 2026.
 - Has ADHD. Timers and 25-50 minute work blocks help; long unstructured stretches don't.

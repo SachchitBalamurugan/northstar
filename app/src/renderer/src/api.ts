@@ -161,8 +161,44 @@ async function composeViaInbox(instruction: string, onStep: (s: SidekickStep) =>
   }
 }
 
+/** "add/schedule/put … (on/to my) calendar", "remind me …", "block time for …" → the connected Google Calendar via inbox. */
+export const isCalendarRequest = (s: string) =>
+  /\b(calendar|schedule|reschedule|block (off |out )?time|remind me|book (a )?(slot|time))\b/i.test(s) ||
+  (/\b(add|put|save|create)\b/i.test(s) && /\b(event|meeting|hackathon|fair|session|class|lecture|exam|appointment|deadline)\b/i.test(s));
+
+/** Turn a request-shaped title ("Sidekick: can you add hackathon due at 4 pm today to calendar") into an event name ("Hackathon due"). */
+function eventTitle(raw: string): string {
+  let t = raw.replace(/^\s*(sidekick|ask|note)\s*:\s*/i, "")
+    .replace(/^(hey\s+)?(can|could|would)\s+you\s+|^(please|pls)\s+/i, "")
+    .replace(/^(add|put|schedule|create|save|block( off| out)?( time)?( for)?)\s+/i, "")
+    .replace(/\s+(to|on|in|into)\s+(my\s+)?(google\s+)?calend\w*\b.*$/i, "")
+    .replace(/\b(at|by|on)?\s*\d{1,2}(:\d{2})?\s*(am|pm)\b/gi, "")
+    .replace(/\b(today|tonight|tomorrow|this (morning|afternoon|evening))\b/gi, "")
+    .replace(/\s{2,}/g, " ").trim().replace(/[.,;:]+$/, "");
+  return t ? t[0].toUpperCase() + t.slice(1) : raw;
+}
+
+async function calendarViaInbox(instruction: string, onStep: (s: SidekickStep) => void): Promise<void> {
+  const { suggestEvents, addEvent } = await import("./calendarAgent");
+  let n = 0; const step = (detail: string, action = "act") => onStep({ step: ++n, action, detail });
+  step("Searching your email, files and calendar for this event…");
+  const found = await suggestEvents(instruction);
+  const best = found[0] ? { ...found[0], title: eventTitle(found[0].title) } : undefined;
+  if (!best) { step("I couldn't find a date for that. Try adding a day and time, e.g. \"Saturday 10am\".", "done"); return; }
+  const when = new Date(best.start).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  step(`Found: ${best.title}, ${when} (${best.sourceLabel})`);
+  step("Adding it to your connected Google Calendar…");
+  const r = await addEvent(best);
+  if (r.via === "service") step(`Added "${best.title}" on ${when}. You can edit or delete it in Workflow > Calendar.`, "done");
+  else if (r.error && /has not been used|is disabled|accessNotConfigured/i.test(r.error))
+    step("Google refused: the Google Calendar API is turned off in your Google Cloud project. Enable it (APIs & Services > Library > Google Calendar API), wait a minute, then try again.", "done");
+  else if (r.error) step(`Google Calendar said: ${r.error.slice(0, 160)}`, "done");
+  else step("The inbox service isn't reachable, so I opened Google Calendar with the event filled in. Press Save there.", "done");
+}
+
 export async function runSidekick(instruction: string, onStep: (s: SidekickStep) => void): Promise<void> {
   if (isEmailRequest(instruction)) return composeViaInbox(instruction, onStep);
+  if (isCalendarRequest(instruction)) return calendarViaInbox(instruction, onStep);
   try {
     const r = await fetch(SERVICES.actions + "/sidekick", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instruction }) });
     if (!r.ok || !r.body) throw new Error("offline");

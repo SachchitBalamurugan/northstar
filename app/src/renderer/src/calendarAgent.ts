@@ -159,12 +159,15 @@ async function localSuggest(query: string): Promise<EventCandidate[]> {
 }
 
 /** Add one approved event. Prefers the inbox service (writes to Google Calendar); else opens a prefilled Google Calendar page. */
-export async function addEvent(c: EventCandidate): Promise<{ via: "service" | "link" }> {
+export async function addEvent(c: EventCandidate): Promise<{ via: "service" | "link"; error?: string }> {
   try {
     const r = await fetch(SERVICES.inbox + "/calendar/add", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ candidate: c }), signal: AbortSignal.timeout(8000),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ candidate: c }), signal: AbortSignal.timeout(15000),
     });
     if (r.ok) return { via: "service" };
+    // Connected but Google refused (e.g. Calendar API disabled): surface the reason instead of silently opening a link.
+    const j = await r.json().catch(() => ({}));
+    if (j?.error) return { via: "link", error: String(j.error) };
   } catch { /* offline */ }
   const url = googleCalendarUrl(c.title, new Date(c.start), new Date(c.end), [c.details, c.location].filter(Boolean).join("\n"));
   if (window.northstar) window.northstar.openExternal(url); else window.open(url, "_blank", "noopener");
