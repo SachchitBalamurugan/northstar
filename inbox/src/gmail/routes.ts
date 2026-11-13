@@ -23,6 +23,7 @@ export interface SendReplyPayload {
   body: string;
   originalBody?: string;
   autoSend?: boolean;
+  fresh?: boolean;
 }
 
 // ---- edit heuristics (exported for tests) ----
@@ -83,7 +84,7 @@ export async function handleSendReply(p: Proposal): Promise<Record<string, unkno
   const subject = payload.subject ?? "";
   const refs = emailId ? { emailId } : undefined;
 
-  const draft = await createReplyDraft({ emailId, threadId: payload.threadId ?? "", to, subject, body });
+  const draft = await createReplyDraft({ emailId, threadId: payload.threadId ?? "", to, subject, body, fresh: payload.fresh === true });
   const sent = payload.autoSend === true ? await sendDraft(draft.draftId) : undefined;
 
   if (typeof payload.originalBody === "string" && payload.originalBody.trim() !== body.trim()) {

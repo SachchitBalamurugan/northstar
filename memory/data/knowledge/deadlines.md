@@ -5,7 +5,3 @@
 - Nimbus online assessment (SWE intern): link expires Wed Nov 18. ~75 min. No calendar block yet.
 - CS61B Project 3 (Build Your Own World): Fri Nov 20, 5pm. ~2h+. No calendar block yet. Feels big; keeps getting pushed.
 - Financial aid verification form: Fri Nov 20. ~30 min. Blocked on calendar Tue Nov 17, 5:00-5:30pm.
-
-## Recently done
-- CS61B Lab 9 (Tue Nov 10). Done Nov 10.
-- English R1B essay draft 2 (Thu Nov 12). Done Nov 12.

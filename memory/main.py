@@ -18,6 +18,7 @@ import storage
 from routes_briefing import router as briefing_router
 from routes_discover import router as discover_router
 from routes_insights import router as insights_router
+from routes_research import router as research_router
 from routes_storage import router as storage_router
 
 
@@ -51,3 +52,4 @@ app.include_router(storage_router)
 app.include_router(insights_router)
 app.include_router(discover_router)
 app.include_router(briefing_router)
+app.include_router(research_router)

@@ -13,6 +13,7 @@ import { gmailRoutes, syncGmail } from "./gmail/routes.js";
 import { calendarRoutes, syncCalendar } from "./calendar/routes.js";
 import { triageRoutes, runTriage } from "./triage/routes.js";
 import { courseRoutes } from "./courses/routes.js";
+import { composeRoutes } from "./gmail/compose.js";
 import { authStatus } from "./google/status.js";
 
 export interface SyncResult {
@@ -108,5 +109,6 @@ export async function buildServer(opts: { logger?: boolean } = {}) {
   await app.register(calendarRoutes);
   await app.register(triageRoutes);
   await app.register(courseRoutes);
+  await app.register(composeRoutes);
   return app;
 }

@@ -15,6 +15,8 @@ export interface ReplyDraftInput {
   to: string;
   subject: string;
   body: string;
+  /** A brand-new email (not a reply): keep the subject as-is, no "Re:". */
+  fresh?: boolean;
 }
 export interface DraftResult {
   draftId: string;
@@ -83,7 +85,7 @@ function appendMockOutbox(entry: MockOutboxEntry): void {
 // ---- API ----
 /** Create a reply draft in the original thread. Never sends. */
 export async function createReplyDraft(input: ReplyDraftInput): Promise<DraftResult> {
-  const subject = replySubject(input.subject);
+  const subject = input.fresh ? input.subject : replySubject(input.subject);
   if (useFixtures()) {
     const draftId = `mock-${randomUUID()}`;
     appendMockOutbox({ kind: "draft", draftId, at: new Date().toISOString(), ...input, subject });

@@ -134,7 +134,35 @@ export const approve = (p: Proposal, answers?: Record<string, string>) => {
 export const reject = (p: Proposal) => { local[p.id] = "rejected"; return req(svcFor(p), `/proposals/${p.id}/reject`, post({}), () => ({ ok: true })); };
 
 // actions :7703 — Sidekick streams SSE steps; mock stream if offline
+/** "send/write an email to x@y.com about …" → inbox /compose (Gmail API, real research), not the browser agent. */
+const EMAIL_ADDR = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+export const isEmailRequest = (s: string) => EMAIL_ADDR.test(s) && /\b(e-?mail|send|write|message|tell)\b/i.test(s);
+
+async function composeViaInbox(instruction: string, onStep: (s: SidekickStep) => void): Promise<void> {
+  const research = /\b(latest|news|recent|today|this week|update|trends?|happening)\b/i.test(instruction);
+  let n = 0; const step = (detail: string, action = "act") => onStep({ step: ++n, action, detail });
+  step(`Writing to ${instruction.match(EMAIL_ADDR)![0]}`);
+  if (research) step("Researching current sources on the web (this can take a minute)…");
+  const t = setTimeout(() => step("Writing the email in your voice…"), research ? 25000 : 1500);
+  try {
+    const r = await fetch(SERVICES.inbox + "/compose", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instruction }), signal: AbortSignal.timeout(200_000),
+    });
+    clearTimeout(t);
+    const p = await r.json();
+    if (!r.ok) { step(p?.error ?? "Couldn't write that email.", "done"); return; }
+    online.inbox = true;
+    step(`Drafted "${p.payload?.subject ?? p.title}"${p.payload?.sources?.length ? ` with ${p.payload.sources.length} sources` : ""}`);
+    step("Paused before sending. Open Approve to read it and send.", "done");
+  } catch {
+    clearTimeout(t);
+    step("The inbox service isn't reachable, so nothing was sent.", "done");
+  }
+}
+
 export async function runSidekick(instruction: string, onStep: (s: SidekickStep) => void): Promise<void> {
+  if (isEmailRequest(instruction)) return composeViaInbox(instruction, onStep);
   try {
     const r = await fetch(SERVICES.actions + "/sidekick", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instruction }) });
     if (!r.ok || !r.body) throw new Error("offline");
