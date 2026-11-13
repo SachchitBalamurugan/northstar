@@ -5,6 +5,7 @@ import { checkHealth, getPendingProposals, type ServiceName } from "./api";
 import { AmbientGlow, GlassPill, LogoMark } from "./components/ui";
 import FloatingHandoff from "./components/FloatingHandoff";
 import GoogleStatus from "./components/GoogleStatus";
+import { ProfileButton, ProfilePanel } from "./components/Profile";
 import Dashboard, { AskBar } from "./screens/Dashboard";
 import Now from "./screens/Now";
 import Approve from "./screens/Approve";
@@ -153,6 +154,7 @@ export default function App() {
 
         <div className="ml-auto flex items-center gap-4">
           <GoogleStatus />
+          <ProfileButton />
           <span title={`${live}/3 services live. Offline services use demo data.`} className="no-drag flex items-center gap-1.5">
             {(Object.keys(health) as ServiceName[]).map(s => (
               <span key={s} title={`${s}: ${health[s] ? "live" : "demo data"}`} className={`h-1.5 w-1.5 rounded-full ${health[s] ? "bg-emerald-400 shadow-[0_0_8px_#34d399]" : "bg-white/20"}`} />
@@ -180,6 +182,7 @@ export default function App() {
       {!focusTask && <FloatingHandoff bounds={dragArea} onOpen={() => openCommand()} />}
       <AnimatePresence>{focusTask && <Focus />}</AnimatePresence>
       <CommandBar />
+      <ProfilePanel />
     </>
   );
 }

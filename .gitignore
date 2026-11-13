@@ -32,3 +32,6 @@ __pycache__/
 .DS_Store
 .venv/
 Thumbs.db
+
+# personal profile written by the app (never commit)
+memory/data/knowledge/profile.md

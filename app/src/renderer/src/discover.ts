@@ -2,6 +2,15 @@
 // The UI talks to `startResearch()`, which streams a run (agents → steps → results). Today it's a realistic
 // simulation. A future backend implements the same stream at POST /discover/run (SSE of DiscoverEvent),
 // and only `startResearch` needs to change.
+import { useProfile, contextLine, locationHint, type Profile } from "./profile";
+
+/** " · for a UC Berkeley student near San Francisco Bay Area" (empty when the profile has no school/location). */
+function audience(p: Profile): string {
+  const loc = p.location || (/bay area/i.test(locationHint(p)) ? "San Francisco Bay Area" : "");
+  if (!p.school && !loc) return "";
+  return ` · for ${p.school ? `a ${p.school} student` : "you"}${loc ? ` near ${loc}` : ""}`;
+}
+
 export type ResultKind = "event" | "opportunity" | "place" | "article";
 
 export interface DiscoverResult {
@@ -121,6 +130,16 @@ function results(topic: Topic, opts: ResearchOptions): Omit<DiscoverResult, "id"
     ],
   };
   let list = sets[topic];
+  const profile = useProfile.getState().profile;
+  const loc = locationHint(profile);
+  if (loc || profile.school) {
+    list = list.map(r => {
+      let why = r.why;
+      if (profile.school && why.startsWith("Your goal this semester")) why = why.replace("Your goal this semester", `As a ${profile.school} student, your goal this semester`);
+      if (loc && profile.location && r.kind === "event" && r.location && r.location !== "Online") why = `Near you: ${why}`;
+      return why === r.why ? r : { ...r, why };
+    });
+  }
   if (opts.when === "week") list = list.filter(r => !r.start || new Date(r.start).getTime() - Date.now() < 7 * 864e5);
   return list;
 }
@@ -138,11 +157,13 @@ async function memoryOnline(): Promise<boolean> {
 }
 
 async function runBackend(query: string, opts: ResearchOptions): Promise<BackendItem[]> {
-  const where = opts.where === "campus" ? " near campus" : opts.where === "online" ? " (online)" : "";
+  const profile = useProfile.getState().profile;
+  const where = opts.where === "campus" ? ` near ${profile.school || "campus"}` : opts.where === "online" ? " (online)" : "";
   const when = opts.when === "week" ? " this week" : opts.when === "month" ? " this month" : "";
+  const ctx = contextLine(profile);
   const r = await fetch(`${MEMORY}/discover/run`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ focus: `${query}${when}${where}` }), signal: AbortSignal.timeout(180_000), // web research can take a while
+    body: JSON.stringify({ focus: `${query}${when}${where}${ctx ? `. About me: ${ctx}` : ""}` }), signal: AbortSignal.timeout(180_000), // web research can take a while
   });
   if (!r.ok) throw new Error(`discover/run ${r.status}`);
   const body = await r.json();
@@ -174,7 +195,7 @@ export function startResearch(query: string, opts: ResearchOptions, onEvent: (e:
     const topic = topicOf(query);
     const agents = AGENTS[topic];
     const filters = [opts.when === "week" ? "This week" : opts.when === "month" ? "This month" : "Any time", opts.where === "campus" ? "Near campus" : opts.where === "online" ? "Online" : "Anywhere"];
-    emit({ type: "plan", intent: `Researching: ${query}`, agents, filters });
+    emit({ type: "plan", intent: `Researching: ${query}${audience(useProfile.getState().profile)}`, agents, filters });
     const research = runBackend(query, opts);
     // Show the agents working while the real research runs (steps + sources only; results come from the backend).
     const srcs = SOURCES[topic];
@@ -212,7 +233,8 @@ async function simulateRun(query: string, opts: ResearchOptions, onEvent: (e: Di
     const filters = [opts.when === "week" ? "This week" : opts.when === "month" ? "This month" : "Any time", opts.where === "campus" ? "Near campus" : opts.where === "online" ? "Online" : "Anywhere"];
     const intent = topic === "career" ? "Career events and opportunities that fit your schedule"
       : topic === "fun" ? "Fun things to do when you're free" : topic === "study" ? "Study help for your current classes" : `Research: ${query}`;
-    if (!skipPlan) { await sleep(500); if (isCancelled()) return; onEvent({ type: "plan", intent, agents, filters }); }
+    const intentFull = `${intent}${audience(useProfile.getState().profile)}`;
+    if (!skipPlan) { await sleep(500); if (isCancelled()) return; onEvent({ type: "plan", intent: intentFull, agents, filters }); }
 
     const pool = results(topic, opts);
     const srcs = SOURCES[topic];

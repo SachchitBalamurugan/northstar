@@ -7,6 +7,7 @@ import type { EventCandidate } from "@contracts/types";
 import { suggestEvents, addEvent } from "@/calendarAgent";
 import { Heading, Eyebrow, GlowCard, PrimaryButton, SecondaryButton, Window, Chip, relTime, clock } from "@/components/ui";
 import { useUI } from "@/store";
+import { useProfile, firstName } from "@/profile";
 import { approve, draftReply } from "@/api";
 import { loadDashboard, type DashboardData, type Priority, type PriorityKind } from "@/priorities";
 import Briefing from "@/components/Briefing";
@@ -27,6 +28,7 @@ export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [done, setDone] = useState<Set<string>>(new Set());
   const { setScreen, startFocus, openWorkflow } = useUI();
+  const name = useProfile(s => firstName(s.profile));
 
   useEffect(() => {
     let alive = true;
@@ -55,7 +57,7 @@ export default function Dashboard() {
     <div className="pb-40">
       {/* Header */}
       <Heading eyebrow={new Date().toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}>
-        {greeting()}, Maya.<br />
+        {`${greeting()}${name !== "there" ? `, ${name}` : ""}.`}<br />
         {data ? <>{list.length === 0 ? "You're all " : `${Math.min(list.length, 3)} things matter `}<span className="text-glow">{list.length === 0 ? "caught up." : "today."}</span></> : <span className="text-faint">Reading your day…</span>}
       </Heading>
 

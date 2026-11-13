@@ -4,14 +4,13 @@ import { CalendarDays } from "lucide-react";
 import type { CalEvent, Insights } from "@contracts/types";
 import { getInsights, getToday } from "@/api";
 import { useUI } from "@/store";
+import { useProfile, firstName } from "@/profile";
 import Orb from "@/three/Orb";
 import {
   Heading, Lead, Eyebrow, PrimaryButton, SecondaryButton, TextLink, Window, GlowCard, Chip, Stripes, relTime, clock,
 } from "@/components/ui";
 
 type Item = { title: string; why: string; minutes: number; dueAt?: string };
-
-const FIRST_NAME = "Maya";
 
 function greeting(d: Date) {
   const h = d.getHours();
@@ -35,6 +34,7 @@ const HOUR_LABELS: [number, string][] = [[8, "8a"], [12, "12p"], [16, "4p"], [20
 
 export default function Now() {
   const startFocus = useUI(s => s.startFocus);
+  const name = useProfile(s => firstName(s.profile));
   const now = useNow();
   const [insights, setInsights] = useState<Insights | null>(null);
   const [events, setEvents] = useState<CalEvent[] | null>(null);
@@ -79,7 +79,7 @@ export default function Now() {
 
           <motion.div variants={rise}>
             <Heading size="xl" className="mb-6">
-              {greeting(now)}, {FIRST_NAME}.<br />Here's your <span className="text-glow">one thing.</span>
+              {`${greeting(now)}${name !== "there" ? `, ${name}` : ""}.`}<br />Here's your <span className="text-glow">one thing.</span>
             </Heading>
           </motion.div>
 

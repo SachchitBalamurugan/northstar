@@ -31,7 +31,7 @@ log = logging.getLogger("memory.discover")
 MAX_ITEMS = 5
 META_KEY = "discover:latest"
 FIXTURE = "discover.json"
-PROFILE_FILES = ["goals.md", "README.md", "classes.md", "people.md", "routines.md", "deadlines.md"]
+PROFILE_FILES = ["profile.md", "goals.md", "README.md", "classes.md", "people.md", "routines.md", "deadlines.md"]
 _lock = threading.RLock()
 
 Category = Literal["opportunity", "resource", "event", "reading", "idea"]
