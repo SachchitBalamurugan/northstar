@@ -3,7 +3,7 @@ import fs from "node:fs";
 import type { FastifyInstance } from "fastify";
 import type { ElementHandle, Page } from "playwright";
 import { z } from "zod";
-import { newPage, screenshotB64 } from "../browser.js";
+import { openOrReuse, screenshotB64 } from "../browser.js";
 import { complete, llmAvailable } from "../llm.js";
 import { getContext, postEvent, type MemoryContext } from "../memory.js";
 import { readProfile } from "../profile.js";
@@ -423,8 +423,8 @@ async function fillField(page: Page, f: FieldSchema, a: Answer): Promise<{ value
 async function closeStalePages(): Promise<void> {
   for (const [id, page] of openPages) {
     if (page.isClosed() || getProposal(id)?.status !== "pending") {
+      // Leave the application tab open for the student; just stop tracking it.
       openPages.delete(id);
-      await page.close().catch(() => {});
     }
   }
 }
@@ -446,10 +446,10 @@ export type FillProgress = (action: string, detail: string) => void;
 export async function fillForm(url: string, override: Record<string, string> = {}, progress: FillProgress = () => {}): Promise<Proposal> {
   await closeStalePages();
   const profile = { ...(await readProfile()), ...override } as Profile;
-  const page = await newPage();
+  progress("goto", `Opening ${url}`);
+  const { page, reused } = await openOrReuse(url, { match: "path" });
+  if (reused) progress("goto", "Found the application in your open tabs");
   try {
-    progress("goto", `Opening ${url}`);
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.waitForLoadState("load", { timeout: 5_000 }).catch(() => {});
     const pageTitle = (await page.title().catch(() => "")).trim() || new URL(url).hostname;
 
@@ -562,7 +562,7 @@ export async function fillForm(url: string, override: Record<string, string> = {
     openPages.set(proposal.id, page);
     return proposal;
   } catch (err) {
-    await page.close().catch(() => {});
+    // Keep the tab open so the student can see where it stopped.
     throw err;
   }
 }
@@ -636,7 +636,7 @@ onApprove("fill_form", async (p, input) => {
 
   const screenshot = await screenshotB64(page, true).catch(() => "");
   openPages.delete(p.id);
-  await page.close().catch(() => {});
+  // The submitted application stays open in its tab for the student.
   await postEvent({
     source: "form",
     kind: "observation",

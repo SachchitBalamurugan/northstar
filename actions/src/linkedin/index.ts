@@ -5,7 +5,7 @@ import path from "node:path";
 import type { FastifyInstance } from "fastify";
 import type { Page } from "playwright";
 import { z } from "zod";
-import { newPage } from "../browser.js";
+import { openOrReuse } from "../browser.js";
 import { DATA_DIR, MEMORY_URL } from "../config.js";
 import { fillForm, fillSummary } from "../fill/index.js";
 import { complete, llmAvailable } from "../llm.js";
@@ -162,10 +162,10 @@ async function mergeProfile(p: LinkedInProfile): Promise<void> {
 export async function importLinkedIn(
   url: string,
 ): Promise<{ ok: true; profile: LinkedInProfile } | { ok: false; needsLogin: true; message: string }> {
-  const page = await newPage();
-  let keepOpen = false;
+  const { page, reused } = await openOrReuse(url, { match: "path" });
+  // Tabs the student already had open always stay open.
+  let keepOpen = reused;
   try {
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.waitForLoadState("load", { timeout: 15_000 }).catch(() => {});
     await page.waitForTimeout(1_500);
     if (await isAuthWall(page)) {

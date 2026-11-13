@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Send, CalendarPlus, FileText, FileCheck, MailX, Sparkles, type LucideIcon } from "lucide-react";
+import { Send, CalendarPlus, FileText, FileCheck, MailX, Sparkles, RefreshCw, type LucideIcon } from "lucide-react";
 import type { Proposal } from "@contracts/types";
 import { getPendingProposals, approve, reject } from "@/api";
 import { useUI } from "@/store";
-import { Heading, Lead, Eyebrow, Window, NumberedList, PrimaryButton, SecondaryButton, TextLink, Why, Chip, relTime, clock } from "@/components/ui";
+import { Heading, Lead, Eyebrow, Window, PrimaryButton, SecondaryButton, TextLink, Why, Chip, relTime, clock } from "@/components/ui";
 import { approveEdited } from "@/assistApi";
 import RefineControls from "@/components/RefineControls";
 
@@ -85,35 +85,99 @@ function Preview({ p, answers, onAnswer, body, onBody }: {
   return null;
 }
 
+
+const GROUPS: { key: string; label: string; types: Proposal["type"][] }[] = [
+  { key: "emails", label: "Emails", types: ["send_reply"] },
+  { key: "apps", label: "Applications", types: ["fill_form", "submit_form"] },
+  { key: "calendar", label: "Calendar", types: ["create_event"] },
+  { key: "unsub", label: "Unsubscribe", types: ["unsubscribe"] },
+  { key: "suggest", label: "Suggestions", types: ["task"] },
+];
+const GROUP_ORDER = GROUPS.map((g) => g.key);
+const groupOf = (p: Proposal) => GROUPS.find((g) => g.types.includes(p.type))?.key ?? "suggest";
+const AGENT: Record<string, string> = { inbox: "Inbox", memory: "Memory", actions: "Actions", ui: "Memory" };
+const dot = (u: number) => (u >= 3 ? "bg-accent" : u === 2 ? "bg-[#F3C27A]" : "bg-faint/50");
+
+function ago(ms: number) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  return m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`;
+}
+
 export default function Approve() {
   const setPendingCount = useUI((s) => s.setPendingCount);
-  const [items, setItems] = useState<Proposal[] | null>(null);
-  const [idx, setIdx] = useState(0);
+  const [raw, setRaw] = useState<Proposal[] | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dir, setDir] = useState(1);
   const [answers, setAnswers] = useState<Record<string, Answers>>({});
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const [loading, setLoading] = useState(false);
   // Reply bodies the user refined (by proposal id). When set, this is the text that gets sent on approve.
   const [bodies, setBodies] = useState<Record<string, string>>({});
+  // Ids acted on in this screen; hidden even if a poll that started earlier still returns them.
+  const gone = useRef(new Set<string>());
+  const listRef = useRef<HTMLDivElement>(null);
   const send = useCallback((p: Proposal, typed?: Answers) => {
     const body = bodies[p.id];
     return p.type === "send_reply" && body !== undefined && body.trim() && body !== p.payload?.body ? approveEdited(p, body) : approve(p, typed);
   }, [bodies]);
 
-  useEffect(() => {
-    getPendingProposals().then((ps) => { setItems(ps); setPendingCount(ps.length); });
+  // Grouped order is both the list order and the J/K order.
+  const items = useMemo(() => raw && [...raw].sort((a, b) => GROUP_ORDER.indexOf(groupOf(a)) - GROUP_ORDER.indexOf(groupOf(b))), [raw]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const ps = (await getPendingProposals()).filter((p) => !gone.current.has(p.id));
+      setRaw(ps);
+      setPendingCount(ps.length);
+      setUpdatedAt(Date.now());
+    } finally { setLoading(false); }
   }, [setPendingCount]);
 
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 8000);
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    const onFocus = () => { load(); };
+    const onVis = () => { if (document.visibilityState === "visible") load(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(t); clearInterval(tick);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [load]);
+
+  const current = items?.find((p) => p.id === selectedId) ?? items?.[0];
+  const curIdx = items && current ? items.indexOf(current) : -1;
+
+  const select = useCallback((id: string) => {
+    if (!items) return;
+    setDir(items.findIndex((p) => p.id === id) >= curIdx ? 1 : -1);
+    setSelectedId(id);
+  }, [items, curIdx]);
+
   const remove = useCallback((ids: string[]) => {
-    setItems((prev) => {
+    ids.forEach((id) => gone.current.add(id));
+    if (items && current && ids.includes(current.id)) {
+      // Next in the same group, else next overall, else the last one left.
+      const rest = items.filter((p) => !ids.includes(p.id));
+      const after = items.slice(curIdx + 1).filter((p) => !ids.includes(p.id));
+      const next = after.find((p) => groupOf(p) === groupOf(current)) ?? after[0] ?? rest[rest.length - 1];
+      setSelectedId(next?.id ?? null);
+    }
+    setRaw((prev) => {
       if (!prev) return prev;
       const next = prev.filter((p) => !ids.includes(p.id));
       setPendingCount(next.length);
-      setIdx((i) => Math.min(i, Math.max(0, next.length - 1)));
       return next;
     });
-  }, [setPendingCount]);
-
-  const current = items?.[idx];
+  }, [items, current, curIdx, setPendingCount]);
 
   const act = useCallback((kind: "approve" | "skip") => {
     if (!current) return;
@@ -148,14 +212,31 @@ export default function Approve() {
       const k = e.key.toLowerCase();
       if (k === "a") act("approve");
       else if (k === "s") act("skip");
-      else if (k === "j") { setDir(1); setIdx((i) => Math.min(i + 1, items.length - 1)); }
-      else if (k === "k") { setDir(-1); setIdx((i) => Math.max(i - 1, 0)); }
+      else if (k === "j") { const n = items[Math.min(curIdx + 1, items.length - 1)]; if (n) { setDir(1); setSelectedId(n.id); } }
+      else if (k === "k") { const n = items[Math.max(curIdx - 1, 0)]; if (n) { setDir(-1); setSelectedId(n.id); } }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [act, items]);
+  }, [act, items, curIdx]);
+
+  // Keep the selected row in view when moving with J/K.
+  const currentId = current?.id;
+  useEffect(() => {
+    if (!currentId) return;
+    listRef.current?.querySelector(`[data-pid="${CSS.escape(currentId)}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [currentId]);
 
   if (items === null) return null;
+
+  const refreshBtn = (
+    <span className="flex items-center gap-2 text-[11px] text-faint">
+      <button type="button" onClick={() => { load(); }} aria-label="Refresh" title="Refresh"
+        className="grid h-6 w-6 place-items-center rounded-[6px] text-faint transition-colors hover:bg-raised hover:text-ink">
+        <RefreshCw size={12} strokeWidth={1.75} className={loading ? "animate-spin" : ""} />
+      </button>
+      {updatedAt && <span>Last updated {ago(now - updatedAt)}</span>}
+    </span>
+  );
 
   if (!current) {
     return (
@@ -163,29 +244,53 @@ export default function Approve() {
         className="flex min-h-[60vh] flex-col items-center justify-center text-center">
         <Heading size="lg" className="mb-4">All clear.</Heading>
         <Lead>New suggestions show up here.</Lead>
+        <div className="mt-4">{refreshBtn}</div>
         {notice && <p role="status" className={`mt-6 max-w-[32rem] text-[13px] ${notice.ok ? "text-muted" : "text-accent"}`}>{notice.text}</p>}
       </motion.div>
     );
   }
 
   const hasLowRisk = items.some((p) => p.urgency === 1 || p.type === "create_event");
-  // Show a 5-item window of titles around the current index.
-  const start = Math.max(0, Math.min(idx - 2, items.length - 5));
-  const visible = items.slice(start, start + 5);
   const Icon = ICONS[current.type] ?? Sparkles;
+  const groups = GROUPS.map((g) => ({ ...g, list: items.filter((p) => groupOf(p) === g.key) })).filter((g) => g.list.length);
 
   return (
     <div className="mx-auto grid max-w-[1180px] grid-cols-[0.8fr_1.2fr] items-start gap-12">
       <div className="pt-4">
-        <Eyebrow className="mb-4">Approve · {items.length} waiting</Eyebrow>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <Eyebrow>Approve · {items.length} waiting</Eyebrow>
+          {refreshBtn}
+        </div>
         <Heading size="lg" className="mb-6">Nothing happens<br />without your <span className="text-glow">OK.</span></Heading>
-        <Lead className="mb-8">Northstar drafts, plans and fills. You decide.</Lead>
-        <NumberedList
-          items={visible.map((p) => p.title)}
-          active={idx - start}
-          onSelect={(i) => { const n = start + i; setDir(n >= idx ? 1 : -1); setIdx(n); }}
-        />
-        <div className="mt-8 flex flex-col items-start gap-3">
+        <Lead className="mb-6">Northstar drafts, plans and fills. You decide.</Lead>
+        <div ref={listRef} className="max-h-[60vh] overflow-y-auto pr-1">
+          {groups.map((g) => (
+            <section key={g.key} className="mb-4 last:mb-0">
+              <p className="mb-1.5 flex items-center gap-2 px-2 text-[11px] uppercase tracking-[0.12em] text-faint">
+                {g.label}<span className="text-muted">{g.list.length}</span>
+              </p>
+              <ul>
+                {g.list.map((p) => {
+                  const RowIcon = ICONS[p.type] ?? Sparkles;
+                  const active = p.id === current.id;
+                  return (
+                    <li key={p.id}>
+                      <button type="button" data-pid={p.id} onClick={() => select(p.id)} aria-current={active || undefined}
+                        className={`flex w-full items-center gap-3 rounded-[8px] px-2 py-2 text-left transition-colors ${active ? "bg-raised text-ink" : "text-muted hover:bg-raised/60 hover:text-warm"}`}>
+                        <RowIcon size={14} strokeWidth={1.75} className={`shrink-0 ${active ? "text-accent" : "text-faint"}`} />
+                        <span className="min-w-0 flex-1 truncate text-[14px]">{p.title}</span>
+                        <span className="shrink-0 text-[10px] uppercase tracking-[0.1em] text-faint">{AGENT[p.agent] ?? p.agent}</span>
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot(p.urgency)}`} aria-label={`urgency ${p.urgency}`} />
+                        <span className="w-14 shrink-0 text-right text-[11px] text-faint">{p.createdAt ? relTime(p.createdAt) : ""}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
+        </div>
+        <div className="mt-6 flex flex-col items-start gap-3">
           {hasLowRisk && <TextLink onClick={approveLowRisk}>Approve all low-risk</TextLink>}
           <span className="text-[12px] text-faint">A approve · S skip · J/K move</span>
           {notice && <p role="status" className={`max-w-[22rem] text-[13px] ${notice.ok ? "text-muted" : "text-accent"}`}>{notice.text}</p>}

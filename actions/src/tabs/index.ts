@@ -3,7 +3,7 @@
 // everyday tabs in the request body (`tabs`), which is why organize/sessions/archive accept them.
 import type { FastifyInstance } from "fastify";
 import type { Page } from "playwright";
-import { getContext as launchContext, peekContext } from "../browser.js";
+import { attachedContext, getContext as launchContext, peekContext } from "../browser.js";
 import { MOCK } from "../config.js";
 import { isPendingFormPage } from "../fill/index.js";
 import { postEvent } from "../memory.js";
@@ -45,7 +45,8 @@ interface Live {
 
 /** Tabs of the persistent browser, if it is open. Never launches one. Blank tabs are left out. */
 async function liveTabs(): Promise<Live[]> {
-  const ctx = await peekContext();
+  // Attaches to the shared signed-in Chrome if it is running (never spawns one), so its tabs show up.
+  const ctx = MOCK ? await peekContext() : await attachedContext();
   if (!ctx) return [];
   const pages = ctx.pages().filter((p) => !p.isClosed() && /^https?:/i.test(p.url()));
   const out = await Promise.all(

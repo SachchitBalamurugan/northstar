@@ -5,7 +5,7 @@ import { z } from "zod";
 import { BASE_URL } from "../config.js";
 import { fillForm, fillSummary } from "../fill/index.js";
 import { addRunStep, createRun, finishRun, isCancelled, RunCancelled } from "../runs.js";
-import { newPage, screenshotB64 } from "../browser.js";
+import { findTab, getContext as browserContext, openOrReuse, screenshotB64 } from "../browser.js";
 import { complete, llmAvailable } from "../llm.js";
 import { getContext, postEvent } from "../memory.js";
 import { createProposal, onApprove } from "../proposals.js";
@@ -66,6 +66,38 @@ async function settle(page: Page) {
   await page.waitForTimeout(350);
 }
 
+const STOPWORDS = new Set(
+  "this that with from have what when where which there their them they your yours about into onto over under please could would should then than just also make find open check look show tell give need want does done the and for are was were will can our out all any get got let its it's".split(" "),
+);
+
+/** 2-4 distinctive words from the instruction, used to spot a relevant tab the student already has open. */
+export function instructionKeywords(instruction: string): string[] {
+  const words = instruction.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}'-]*/gu) ?? [];
+  const out: string[] = [];
+  for (const w of words) if (w.length > 3 && !STOPWORDS.has(w) && !out.includes(w)) out.push(w);
+  return out.slice(0, 4);
+}
+
+/** Start from a relevant open tab if there is one, else a blank tab (reusing an empty one). */
+async function startPage(run: Run): Promise<Page> {
+  const kws = instructionKeywords(run.instruction);
+  if (kws.length >= 2) {
+    const hit = await findTab(kws).catch(() => null);
+    if (hit) {
+      hit.page.setDefaultTimeout(10_000);
+      await hit.page.bringToFront().catch(() => {});
+      run.emit({ action: "info", detail: `Found it in your open tabs: ${hit.title}` });
+      return hit.page;
+    }
+  }
+  const c = await browserContext();
+  const blank = c.pages().find((p) => !p.isClosed() && /^(about:blank|chrome:\/\/new-?tab)/i.test(p.url() || "about:blank"));
+  const page = blank ?? (await c.newPage());
+  page.setDefaultTimeout(10_000);
+  await page.bringToFront().catch(() => {});
+  return page;
+}
+
 // ---------- real mode: LLM agent loop ----------
 async function runAgent(run: Run): Promise<Outcome> {
   const ctx = await getContext(run.instruction);
@@ -86,7 +118,7 @@ async function runAgent(run: Run): Promise<Outcome> {
     ...[...ctx.snippets, ...ctx.knowledge].map((s) => `- ${s}`),
   ].join("\n");
 
-  const page = await newPage();
+  let page = await startPage(run);
   const history: string[] = [];
   try {
     for (let i = 1; i <= MAX_STEPS; i++) {
@@ -111,7 +143,8 @@ async function runAgent(run: Run): Promise<Outcome> {
       try {
         if (decision.action === "goto") {
           if (!decision.url || !/^https?:\/\//i.test(decision.url)) throw new Error(`invalid url "${decision.url}"`);
-          await page.goto(decision.url, { waitUntil: "domcontentloaded", timeout: 20_000 });
+          const opened = await openOrReuse(decision.url, { match: "exact" });
+          page = opened.page;
           await settle(page);
           detail = `Opened ${decision.url}. ${decision.reason}`;
         } else if (decision.action === "scroll") {
@@ -156,17 +189,17 @@ async function runAgent(run: Run): Promise<Outcome> {
     });
     return `ran out of steps after ${MAX_STEPS}`;
   } finally {
-    await page.close().catch(() => {});
+    // The tab stays open so the student can pick up where Sidekick left off.
   }
 }
 
 // ---------- MOCK mode ----------
 async function mockFixture(run: Run, kind: "unsubscribe" | "syllabus"): Promise<Outcome> {
-  const page = await newPage();
   const pause = () => sleep(MOCK_DELAY_MS);
+  const url = `${BASE_URL}/fixtures/${kind === "unsubscribe" ? "newsletter-unsubscribe.html" : "syllabus.html"}`;
+  const { page, reused } = await openOrReuse(url, { match: "exact" });
+  if (reused) await page.reload({ waitUntil: "domcontentloaded" }).catch(() => {});
   try {
-    const url = `${BASE_URL}/fixtures/${kind === "unsubscribe" ? "newsletter-unsubscribe.html" : "syllabus.html"}`;
-    await page.goto(url, { waitUntil: "domcontentloaded" });
     run.emit({ action: "goto", detail: `Opened ${url}`, screenshot: await screenshotB64(page) });
     await pause();
     if (run.closed()) return "cancelled";
@@ -193,7 +226,7 @@ async function mockFixture(run: Run, kind: "unsubscribe" | "syllabus"): Promise<
     run.emit({ action: "done", detail: outcome, screenshot: await screenshotB64(page) });
     return outcome;
   } finally {
-    await page.close().catch(() => {});
+    // Leave the tab open.
   }
 }
 
@@ -234,9 +267,8 @@ onApprove("unsubscribe", async (p) => {
   const url: unknown = p.payload?.url ?? p.payload?.listUnsubscribeUrl;
   if (typeof url !== "string" || !url.trim()) throw new Error("Unsubscribe proposal has no url (expected payload.url or payload.listUnsubscribeUrl)");
   if (!/^https?:\/\//i.test(url.trim())) throw new Error(`Unsubscribe url must be http(s); got "${url.slice(0, 80)}"`);
-  const page = await newPage();
+  const { page } = await openOrReuse(url.trim(), { match: "exact" });
   try {
-    await page.goto(url.trim(), { waitUntil: "domcontentloaded", timeout: 20_000 });
     await settle(page);
     const snap = await takeSnapshot(page);
     const el =
@@ -251,7 +283,7 @@ onApprove("unsubscribe", async (p) => {
     }
     return { unsubscribed: true, finalUrl: page.url(), clicked };
   } finally {
-    await page.close().catch(() => {});
+    // Leave the tab open.
   }
 });
 
