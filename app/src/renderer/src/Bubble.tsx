@@ -1,20 +1,17 @@
-// Floating desktop bubble (Clicky-style). Lives at the top of the screen, always on top.
-// Drag to move it anywhere. Click to open/close Northstar. Right-click to hand off a task.
+// Floating desktop bubble (Clicky-style). One clean orb, always on top.
+// Drag to move. Click to open/close Northstar. Right-click to hand off a task.
 import { useEffect, useRef, useState } from "react";
-import { getPendingProposals } from "./api";
 
 export default function Bubble() {
-  const [count, setCount] = useState(0);
-  const [hover, setHover] = useState(false);
   const [dragging, setDragging] = useState(false);
   const drag = useRef<{ offX: number; offY: number; sx: number; sy: number; moved: boolean } | null>(null);
 
   useEffect(() => {
-    document.documentElement.style.background = "transparent";
-    document.body.style.background = "transparent";
-    const tick = async () => setCount((await getPendingProposals()).length);
-    tick(); const t = setInterval(tick, 15000);
-    return () => clearInterval(t);
+    for (const el of [document.documentElement, document.body, document.getElementById("root")!]) {
+      el.style.background = "transparent";
+      el.style.overflow = "hidden";
+      el.style.margin = "0";
+    }
   }, []);
 
   const onDown = (e: React.PointerEvent) => {
@@ -33,31 +30,18 @@ export default function Bubble() {
   };
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center select-none" style={{ background: "transparent" }}>
-      <button
+    <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: "transparent" }}>
+      <div
         onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}
         onContextMenu={(e) => { e.preventDefault(); window.northstar?.bubbleCommand(); }}
-        onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
         title="Northstar: click to open · drag to move · right-click to hand off a task"
-        className="relative h-[52px] w-[52px] rounded-full outline-none"
-        style={{ cursor: dragging ? "grabbing" : "pointer", transform: `scale(${dragging ? 1.08 : hover ? 1.05 : 1})`, transition: "transform 160ms ease-out" }}>
-        {/* glow */}
-        <span className="absolute -inset-1 rounded-full opacity-70 blur-[8px]"
-          style={{ background: "conic-gradient(from 0deg,#FF8A3D,#FF3DA5,#8B5CF6,#3B82F6,#22D3EE,#FF8A3D)", animation: "ns-spin 6s linear infinite" }} />
-        {/* iridescent ring */}
-        <span className="absolute inset-0 rounded-full p-[2px]"
-          style={{ background: "conic-gradient(from 0deg,#FF8A3D,#FF3DA5,#8B5CF6,#3B82F6,#22D3EE,#FF8A3D)", animation: "ns-spin 6s linear infinite" }}>
-          <span className="block h-full w-full rounded-full bg-black" />
-        </span>
-        {/* inner orb */}
-        <span className="absolute inset-[7px] rounded-full"
-          style={{ background: "radial-gradient(circle at 35% 30%, #ffffff 0%, #FFB37A 18%, #FF3DA5 45%, #8B5CF6 70%, #1e1b4b 100%)", boxShadow: "inset 0 0 10px rgba(0,0,0,.5)", animation: "ns-breathe 4s ease-in-out infinite" }} />
-        {count > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-[19px] min-w-[19px] items-center justify-center rounded-full border-2 border-black bg-white px-1 text-[10.5px] font-semibold text-black">
-            {count}
-          </span>
-        )}
-      </button>
+        style={{
+          width: 48, height: 48, borderRadius: "50%", cursor: dragging ? "grabbing" : "pointer", userSelect: "none",
+          background: "radial-gradient(circle at 34% 28%, #FFFFFF 0%, #FFC48A 16%, #FF5FA8 42%, #8B5CF6 70%, #2B2A8F 100%)",
+          boxShadow: "0 0 14px rgba(255,95,168,.55), 0 0 4px rgba(139,92,246,.6), inset 0 -4px 10px rgba(0,0,0,.35)",
+          transform: `scale(${dragging ? 1.06 : 1})`, transition: "transform 150ms ease-out",
+        }}
+      />
     </div>
   );
 }

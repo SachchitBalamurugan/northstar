@@ -94,7 +94,7 @@ function createWindow() {
 
 // ---------- floating bubble (Clicky-style: lives at the top of the screen, drag to move, click to open) ----------
 let bubble: BrowserWindow | null = null;
-const BUBBLE = 76;
+const BUBBLE = 72;
 
 function rendererUrl(hash = "") {
   return process.env.ELECTRON_RENDERER_URL ? process.env.ELECTRON_RENDERER_URL + hash : null;
