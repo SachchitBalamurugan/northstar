@@ -29,18 +29,89 @@ export interface Profile {
   website: string;
   workAuthorization: string; // one of WORK_AUTH_OPTIONS or ""
   resumePath: string;        // full local path to resume PDF
+  /** Mode-specific answers (school / work / job hunting / leisure), keyed by ModeField.key. */
+  extra: Record<string, string>;
   updatedAt?: string;
 }
 
 export const EMPTY_PROFILE: Profile = {
   name: "", statuses: [], school: "", program: "", work: "", location: "", interests: [], goals: "", context: "",
   email: "", phone: "", gpa: "", gradYear: "", linkedin: "", github: "", website: "", workAuthorization: "", resumePath: "",
+  extra: {},
 };
+
+/* ---------- Customizable profile: each status unlocks its own questions ---------- */
+export interface ModeField {
+  key: string; label: string; placeholder: string;
+  kind?: "text" | "textarea" | "select";
+  options?: string[];
+  half?: boolean;            // render two-per-row
+  /** Stored on the top-level Profile (school/program/work/gpa/gradYear) instead of `extra`. */
+  top?: keyof Profile;
+}
+export interface Mode { id: "school" | "work" | "jobs" | "leisure"; statuses: Status[]; title: string; blurb: string; fields: ModeField[] }
+
+export const MODES: Mode[] = [
+  {
+    id: "school", statuses: ["school"], title: "School", blurb: "Your academics, so Northstar can plan study time and find the right help.",
+    fields: [
+      { key: "school", top: "school", label: "School", placeholder: "UC Berkeley", half: true },
+      { key: "program", top: "program", label: "Major / program", placeholder: "Computer Science", half: true },
+      { key: "year", label: "Year", placeholder: "Sophomore", half: true },
+      { key: "gpa", top: "gpa", label: "GPA", placeholder: "3.8", half: true },
+      { key: "courses", label: "Current classes", placeholder: "CS 61B, EE 16A, Math 54" },
+      { key: "hardest", label: "Hardest class right now", placeholder: "CS 61B projects", half: true },
+      { key: "studyTime", label: "Best study time", placeholder: "2–5pm, library", half: true },
+      { key: "clubs", label: "Clubs & activities", placeholder: "Cal Robotics, ACM" },
+      { key: "academicGoals", label: "Academic goals", placeholder: "Keep GPA above 3.5, finish projects 5 days early", kind: "textarea" },
+    ],
+  },
+  {
+    id: "work", statuses: ["working", "internship"], title: "Work", blurb: "Your role, so Northstar can protect focus time and handle work email.",
+    fields: [
+      { key: "work", top: "work", label: "Role", placeholder: "Software engineering intern", half: true },
+      { key: "company", label: "Company / team", placeholder: "SkyDeck, infra team", half: true },
+      { key: "workHours", label: "Work hours", placeholder: "Mon–Thu 10–4", half: true },
+      { key: "manager", label: "Manager / mentor", placeholder: "Priya (mentor)", half: true },
+      { key: "skills", label: "Skills you use", placeholder: "TypeScript, React, Python, SQL" },
+      { key: "currentProjects", label: "What you're working on", placeholder: "Shipping the onboarding flow by Dec 1", kind: "textarea" },
+      { key: "careerGoals", label: "Career goals", placeholder: "Full-time SWE offer, grow into backend", kind: "textarea" },
+    ],
+  },
+  {
+    id: "jobs", statuses: ["job_hunting"], title: "Job hunt", blurb: "What you're looking for, so Discover finds the right postings and the filler applies well.",
+    fields: [
+      { key: "targetRoles", label: "Target roles", placeholder: "SWE intern, ML intern, product engineer" },
+      { key: "targetLocations", label: "Where", placeholder: "SF Bay Area, NYC, remote", half: true },
+      { key: "startDate", label: "Available from", placeholder: "Summer 2027", half: true },
+      { key: "companySize", label: "Company type", placeholder: "Any", kind: "select", options: ["Any", "Startup", "Mid-size", "Big tech", "Non-profit / research"], half: true },
+      { key: "gradYear", top: "gradYear", label: "Graduation year", placeholder: "2028", half: true },
+      { key: "dealBreakers", label: "Must-haves / deal-breakers", placeholder: "Paid, hybrid ok, no unpaid trials", kind: "textarea" },
+    ],
+  },
+  {
+    id: "leisure", statuses: ["leisure"], title: "Free time", blurb: "What you enjoy, so Northstar suggests fun things that actually fit you.",
+    fields: [
+      { key: "hobbies", label: "Hobbies", placeholder: "Bouldering, film photography, cooking" },
+      { key: "wantToDo", label: "Things you want to do", placeholder: "See a Warriors game, learn to surf, try a pottery class", kind: "textarea" },
+      { key: "favoritePlaces", label: "Favorite places / vibes", placeholder: "Cafés, beaches, night markets" },
+      { key: "budget", label: "Budget", placeholder: "Free or cheap", kind: "select", options: ["Free", "Free or cheap", "Mid", "Treat myself"], half: true },
+      { key: "company_pref", label: "Usually with", placeholder: "Solo", kind: "select", options: ["Solo", "A friend or two", "Groups", "Meeting new people"], half: true },
+      { key: "freeTime", label: "When you're free", placeholder: "Weekends, Thu evenings" },
+    ],
+  },
+];
+
+/** Modes unlocked by the chosen statuses ("Other" alone unlocks none). */
+export const activeModes = (p: Profile) => MODES.filter(m => m.statuses.some(s => p.statuses.includes(s)));
+export const getField = (p: Profile, f: ModeField): string => (f.top ? String(p[f.top] ?? "") : p.extra?.[f.key] ?? "");
+export const setField = (p: Profile, f: ModeField, v: string): Profile =>
+  f.top ? { ...p, [f.top]: v } : { ...p, extra: { ...(p.extra ?? {}), [f.key]: v } };
 
 export const WORK_AUTH_OPTIONS = ["US citizen / permanent resident", "Authorized (visa)", "Needs sponsorship"] as const;
 
 const KEY = "ns.profile";
-const load = (): Profile => { try { return { ...EMPTY_PROFILE, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch { return EMPTY_PROFILE; } };
+const load = (): Profile => { try { const s = JSON.parse(localStorage.getItem(KEY) || "{}"); return { ...EMPTY_PROFILE, ...s, extra: { ...(s.extra ?? {}) } }; } catch { return EMPTY_PROFILE; } };
 
 /** First name for greetings ("Maya" fallback keeps the demo copy sensible). */
 export const firstName = (p: Profile) => p.name.trim().split(/\s+/)[0] || "there";
@@ -60,6 +131,13 @@ export function contextLine(p: Profile): string {
     p.work && `work: ${p.work}`,
     locationHint(p) && `location: ${locationHint(p)}`,
     p.interests.length ? `interests: ${p.interests.join(", ")}` : "",
+    // The most search-relevant answer from each active mode.
+    ...activeModes(p).map(m => {
+      const key = m.id === "school" ? "courses" : m.id === "work" ? "skills" : m.id === "jobs" ? "targetRoles" : "hobbies";
+      const v = p.extra?.[key]?.trim();
+      return v ? `${key === "courses" ? "classes" : key === "targetRoles" ? "looking for" : key}: ${v}` : "";
+    }),
+    activeModes(p).some(m => m.id === "leisure") && p.extra?.budget ? `budget: ${p.extra.budget}` : "",
   ].filter(Boolean);
   return bits.join("; ");
 }
@@ -83,6 +161,13 @@ export function toMarkdown(p: Profile): string {
   if (p.website) L.push(`- Website: ${p.website}`);
   if (p.workAuthorization) L.push(`- Work authorization: ${p.workAuthorization}`);
   if (p.context.trim()) for (const line of p.context.trim().split(/\n+/)) L.push(`- ${line.trim().replace(/^[-*]\s*/, "")}`);
+  // Only the sections for the statuses the user picked, so the AI focuses on what matters now.
+  for (const m of activeModes(p)) {
+    const rows = m.fields.filter(f => !f.top && (p.extra?.[f.key] ?? "").trim());
+    if (!rows.length) continue;
+    L.push("", `## ${m.title}`);
+    for (const f of rows) L.push(`- ${f.label}: ${p.extra[f.key].trim().replace(/\n+/g, " ")}`);
+  }
   return L.join("\n") + "\n";
 }
 

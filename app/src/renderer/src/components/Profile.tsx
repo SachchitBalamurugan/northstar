@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode, type KeyboardEvent } from 
 import { AnimatePresence, motion } from "framer-motion";
 import { User, X, Loader2, Download } from "lucide-react";
 import { importLinkedIn, getLinkedIn, type LinkedInProfile } from "../jobsApi";
-import { useProfile, STATUS_LABELS, contextLine, WORK_AUTH_OPTIONS, type Profile, type Status } from "../profile";
+import { useProfile, STATUS_LABELS, contextLine, WORK_AUTH_OPTIONS, activeModes, getField, setField, type Profile, type Status } from "../profile";
 import { PrimaryButton, Eyebrow, TextLink } from "./ui";
 
 const initials = (name: string) =>
@@ -131,6 +131,7 @@ export function ProfilePanel() {
 
   const syncText = sync === "saving" ? "Saving…" : sync === "synced" ? "Synced to Northstar memory ✓" : sync === "local" ? "Saved on this device (memory service offline)" : "";
   const preview = contextLine(draft);
+  const modes = activeModes(draft);
   const suggestions = SUGGESTIONS.filter(s => !draft.interests.some(x => x.toLowerCase() === s));
 
   return (
@@ -175,11 +176,50 @@ export function ProfilePanel() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="School"><input className={inputCls} value={draft.school} placeholder="UC Berkeley" onChange={e => set("school", e.target.value)} /></Field>
-                  <Field label="Program"><input className={inputCls} value={draft.program} placeholder="CS, sophomore" onChange={e => set("program", e.target.value)} /></Field>
-                </div>
-                <Field label="Work / role"><input className={inputCls} value={draft.work} placeholder="SkyDeck intern" onChange={e => set("work", e.target.value)} /></Field>
+                {/* Status-driven sections: each status unlocks its own questions. */}
+                {modes.length === 0 ? (
+                  <p className="rounded-[12px] border-[0.8px] border-dashed border-line px-4 py-3 text-[13px] leading-relaxed text-faint">
+                    Pick what you're up to above. <span className="text-muted">In school</span> asks about classes,{" "}
+                    <span className="text-muted">Working</span> about your role, <span className="text-muted">Job hunting</span> about what you want,
+                    and <span className="text-muted">Taking it easy</span> about hobbies and things to do.
+                  </p>
+                ) : (
+                  <AnimatePresence initial={false}>
+                    {modes.map(m => (
+                      <motion.section key={m.id} layout
+                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0, marginTop: -12 }}
+                        transition={{ duration: 0.22, ease: "easeOut" }}
+                        className="overflow-hidden rounded-[14px] border-[0.8px] border-line bg-white/[0.02] p-4">
+                        <div className="mb-3">
+                          <p className="text-[14px] font-medium text-ink">{m.title}</p>
+                          <p className="text-[12.5px] leading-relaxed text-faint">{m.blurb}</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          {m.fields.map(f => {
+                            const v = getField(draft, f);
+                            const onChange = (val: string) => setDraft(d => setField(d, f, val));
+                            return (
+                              <div key={f.key} className={f.half ? "" : "col-span-2"}>
+                                <Field label={f.label}>
+                                  {f.kind === "textarea" ? (
+                                    <textarea className={`${inputCls} resize-none`} rows={2} value={v} placeholder={f.placeholder} onChange={e => onChange(e.target.value)} />
+                                  ) : f.kind === "select" ? (
+                                    <select className={inputCls} value={v} onChange={e => onChange(e.target.value)}>
+                                      <option value="">Choose…</option>
+                                      {f.options?.map(o => <option key={o} value={o}>{o}</option>)}
+                                    </select>
+                                  ) : (
+                                    <input className={inputCls} value={v} placeholder={f.placeholder} onChange={e => onChange(e.target.value)} />
+                                  )}
+                                </Field>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </motion.section>
+                    ))}
+                  </AnimatePresence>
+                )}
                 <Field label="Location"><input className={inputCls} value={draft.location} placeholder="Berkeley, CA" onChange={e => set("location", e.target.value)} /></Field>
 
                 <div className="flex flex-col gap-2">
