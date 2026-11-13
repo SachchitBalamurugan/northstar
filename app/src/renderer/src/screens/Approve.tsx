@@ -4,11 +4,16 @@ import { Send, CalendarPlus, FileText, FileCheck, MailX, Sparkles, type LucideIc
 import type { Proposal } from "@contracts/types";
 import { getPendingProposals, approve, reject } from "@/api";
 import { useUI } from "@/store";
-import { Heading, Card, PrimaryButton, TextLink, Why, Chip, relTime, clock } from "@/components/ui";
+import { Heading, Lead, Eyebrow, Window, NumberedList, PrimaryButton, SecondaryButton, TextLink, Why, Chip, relTime, clock } from "@/components/ui";
 
 const ICONS: Record<Proposal["type"], LucideIcon> = {
   send_reply: Send, create_event: CalendarPlus, fill_form: FileText,
   submit_form: FileCheck, unsubscribe: MailX, task: Sparkles,
+};
+
+const LABELS: Record<Proposal["type"], string> = {
+  send_reply: "Reply", create_event: "Calendar", fill_form: "Application",
+  submit_form: "Application", unsubscribe: "Unsubscribe", task: "Suggestion",
 };
 
 type Field = { label: string; value: string; confidence?: number };
@@ -17,27 +22,42 @@ function Preview({ p }: { p: Proposal }) {
   const pl = p.payload ?? {};
   if (p.type === "send_reply") {
     return (
-      <div className="mt-5">
-        <p className="mb-2 text-[13px] text-muted">To {pl.to} · {pl.subject}</p>
-        <div className="relative max-h-[9.5rem] overflow-hidden rounded-xl bg-soft p-4">
-          <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-ink">{pl.body}</p>
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-soft to-transparent" />
+      <div className="mt-6 rounded-[12px] bg-raised p-5">
+        <div className="mb-4 space-y-1.5 border-b-[0.8px] border-line pb-4 text-[12px] text-faint">
+          <p><span className="inline-block w-16">To</span><span className="text-muted">{pl.to}</span></p>
+          <p><span className="inline-block w-16">Subject</span><span className="text-muted">{pl.subject}</span></p>
+        </div>
+        <div className="relative max-h-[10rem] overflow-hidden">
+          <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-warm">{pl.body}</p>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-raised to-transparent" />
         </div>
       </div>
     );
   }
   if (p.type === "create_event" && pl.start && pl.end) {
-    return <p className="mt-5 text-[15px] text-ink">{clock(pl.start)} – {clock(pl.end)}</p>;
+    const d = new Date(pl.start);
+    return (
+      <div className="mt-6 flex gap-5 rounded-[12px] bg-raised p-5">
+        <div className="flex w-16 shrink-0 flex-col items-center justify-center rounded-[10px] border-[0.8px] border-line py-2">
+          <span className="text-[11px] uppercase tracking-[0.12em] text-faint">{d.toLocaleDateString([], { weekday: "short" })}</span>
+          <span className="display text-[26px] text-ink">{d.getDate()}</span>
+        </div>
+        <div className="min-w-0 flex-1 border-l-2 border-accent pl-4">
+          <p className="text-[12px] text-faint">{clock(pl.start)} – {clock(pl.end)}</p>
+          <p className="mt-1 truncate text-[15px] text-warm"><span className="mr-1.5 text-accent">◎</span>{pl.title ?? p.title}</p>
+        </div>
+      </div>
+    );
   }
   if ((p.type === "fill_form" || p.type === "submit_form") && Array.isArray(pl.fields)) {
     return (
-      <ul className="mt-5 divide-y divide-line rounded-xl bg-soft px-4">
+      <ul className="mt-6 divide-y divide-line rounded-[12px] bg-raised px-5">
         {(pl.fields as Field[]).map((f) => (
-          <li key={f.label} className="flex items-center justify-between gap-4 py-2.5 text-[14px]">
-            <span className="text-muted">{f.label}</span>
+          <li key={f.label} className="flex items-center justify-between gap-4 py-3">
+            <span className="text-[12px] uppercase tracking-[0.1em] text-faint">{f.label}</span>
             <span className="flex min-w-0 items-center gap-2">
-              {f.value ? <span className="truncate text-ink">{f.value}</span> : <span className="text-muted italic">Needs you</span>}
-              {f.value && (f.confidence ?? 1) < 0.7 && <Chip>check this</Chip>}
+              {f.value ? <span className="truncate text-[15px] text-warm">{f.value}</span> : <Chip tone="accent">Needs you</Chip>}
+              {f.value && (f.confidence ?? 1) < 0.7 && <Chip tone="accent">check this</Chip>}
             </span>
           </li>
         ))}
@@ -99,68 +119,62 @@ export default function Approve() {
     return () => window.removeEventListener("keydown", onKey);
   }, [act, items]);
 
-  const hasLowRisk = items?.some((p) => p.urgency === 1 || p.type === "create_event");
-  const upcoming = items ? items.slice(idx + 1, idx + 3) : [];
+  if (items === null) return null;
+
+  if (!current) {
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}
+        className="flex min-h-[60vh] flex-col items-center justify-center text-center">
+        <Heading size="lg" className="mb-4">All clear.</Heading>
+        <Lead>New suggestions show up here.</Lead>
+      </motion.div>
+    );
+  }
+
+  const hasLowRisk = items.some((p) => p.urgency === 1 || p.type === "create_event");
+  // Show a 5-item window of titles around the current index.
+  const start = Math.max(0, Math.min(idx - 2, items.length - 5));
+  const visible = items.slice(start, start + 5);
+  const Icon = ICONS[current.type] ?? Sparkles;
 
   return (
-    <div className="mx-auto max-w-[640px]">
-      <Heading eyebrow="Approve">Nothing happens<br />without your OK.</Heading>
-
-      {items === null ? null : !current ? (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
-          <p className="mb-2 font-serif text-[32px] text-ink">All clear.</p>
-          <Why>New suggestions show up here.</Why>
-        </motion.div>
-      ) : (
-        <>
-          <div className="mb-3 flex items-center justify-between">
-            <span className="text-[13px] text-muted">{idx + 1} of {items.length}</span>
-            {hasLowRisk && <TextLink onClick={approveLowRisk} className="text-[13px]">Approve all low-risk</TextLink>}
-          </div>
-
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div key={current.id}
-              initial={{ opacity: 0, x: 24 * dir }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 * dir }}
-              transition={{ duration: 0.2, ease: "easeOut" }}>
-              <Card className="p-8">
-                <Current p={current} />
-                <div className="mt-8 flex items-center gap-6">
-                  <PrimaryButton onClick={() => act("approve")}>Approve</PrimaryButton>
-                  <TextLink onClick={() => act("skip")}>Skip</TextLink>
-                  <span className="ml-auto text-[12px] text-muted">A approve · S skip · J/K move</span>
-                </div>
-              </Card>
-            </motion.div>
-          </AnimatePresence>
-
-          {upcoming.length > 0 && (
-            <ul className="mt-4 space-y-2 px-2">
-              {upcoming.map((p, i) => (
-                <li key={p.id} className="truncate font-serif text-[17px] text-muted" style={{ opacity: i === 0 ? 0.6 : 0.35 }}>
-                  {p.title}
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-function Current({ p }: { p: Proposal }) {
-  const Icon = ICONS[p.type] ?? Sparkles;
-  return (
-    <>
-      <div className="mb-4 flex items-center gap-3">
-        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-soft text-ink">
-          <Icon size={17} strokeWidth={1.75} />
-        </span>
-        {p.dueAt && <Chip>due {relTime(p.dueAt)}</Chip>}
+    <div className="mx-auto grid max-w-[1180px] grid-cols-[0.8fr_1.2fr] items-start gap-12">
+      <div className="pt-4">
+        <Eyebrow className="mb-4">Approve · {items.length} waiting</Eyebrow>
+        <Heading size="lg" className="mb-6">Nothing happens<br />without your <span className="text-glow">OK.</span></Heading>
+        <Lead className="mb-8">Northstar drafts, plans and fills. You decide.</Lead>
+        <NumberedList
+          items={visible.map((p) => p.title)}
+          active={idx - start}
+          onSelect={(i) => { const n = start + i; setDir(n >= idx ? 1 : -1); setIdx(n); }}
+        />
+        <div className="mt-8 flex flex-col items-start gap-3">
+          {hasLowRisk && <TextLink onClick={approveLowRisk}>Approve all low-risk</TextLink>}
+          <span className="text-[12px] text-faint">A approve · S skip · J/K move</span>
+        </div>
       </div>
-      <h2 className="mb-2 font-serif text-[28px] leading-[1.15] text-ink">{p.title}</h2>
-      <Why>{p.why}</Why>
-      <Preview p={p} />
-    </>
+
+      <Window
+        title={LABELS[current.type] ?? "Suggestion"}
+        icon={<Icon size={16} strokeWidth={1.75} />}
+        tag="NEEDS YOUR OK"
+        meta={current.dueAt ? `due ${relTime(current.dueAt)}` : undefined}
+        bodyClassName="p-7"
+      >
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div key={current.id}
+            initial={{ opacity: 0, x: 8 * dir }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 * dir }}
+            transition={{ duration: 0.22, ease: "easeOut" }}>
+            <h2 className="display mb-3 text-[26px] leading-[1.15] text-ink">{current.title}</h2>
+            <Why>{current.why}</Why>
+            <Preview p={current} />
+            <div className="mt-8 flex items-center justify-end gap-3">
+              <SecondaryButton onClick={() => act("skip")}>Skip</SecondaryButton>
+              <PrimaryButton onClick={() => act("approve")}>Approve</PrimaryButton>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </Window>
+    </div>
   );
 }

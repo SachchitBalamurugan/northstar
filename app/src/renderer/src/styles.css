@@ -1,42 +1,43 @@
 @import "tailwindcss";
 
-/* Design tokens. The "Design" sub-agent refines these from sentient-os.ai. Use tokens, never raw hex, in components. */
+/* Northstar design tokens, matched to sentient-os.ai. See app/DESIGN.md. Dark only, like Sentient. */
 :root {
-  --bg: #FAFAF9;
-  --surface: #FFFFFF;
-  --ink: #0B0B0E;
-  --muted: #5F616D;
-  --line: #E6E6E6;
+  --bg: #000000;
+  --surface: #0B0B0D;
+  --raised: #141416;
+  --ink: #FFFFFF;
+  --warm: #E8E5DF;
+  --muted: #A5A5AD;
+  --faint: #6E6E76;
+  --line: rgba(255, 255, 255, 0.118);
+  --glass: rgba(255, 255, 255, 0.05);
+  --glass-line: #373737;
   --accent: #E26D45;
-  --accent-ink: #0B0B0E;
-  --soft: #F2F2F3;
-  --radius: 12px;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0B0B0E;
-    --surface: #121316;
-    --ink: #F5F5F7;
-    --muted: #8A8D98;
-    --line: #20232B;
-    --accent: #E26D45;
-    --accent-ink: #0B0B0E;
-    --soft: #16171B;
-  }
+  --accent-ink: #000000;
+  --soft: #141416;
+  --radius: 18px;
+  color-scheme: dark;
 }
 
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
+  --color-raised: var(--raised);
   --color-ink: var(--ink);
+  --color-warm: var(--warm);
   --color-muted: var(--muted);
+  --color-faint: var(--faint);
   --color-line: var(--line);
+  --color-glass: var(--glass);
+  --color-glass-line: var(--glass-line);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   --color-soft: var(--soft);
   --radius-card: var(--radius);
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-sans: "Satoshi", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Cabinet Grotesk", "Satoshi", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Cabinet Grotesk", "Satoshi", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
 }
 
 html, body, #root { height: 100%; }
@@ -46,10 +47,45 @@ body {
   color: var(--ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
+::selection { background: rgba(226, 109, 69, 0.35); }
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.12) transparent; }
+
 .drag { -webkit-app-region: drag; }
 .no-drag { -webkit-app-region: no-drag; }
 
+/* Headline style: Cabinet 500, tight tracking */
+.display { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.045em; line-height: 1.08; }
+
+/* Warm gradient emphasis word ("life.") */
+.text-glow {
+  background: linear-gradient(90deg, #FFFFFF 0%, #F3C27A 45%, #E26D45 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* Warm-gold selected state from Sentient's Knowledge window */
+.selected {
+  background: rgba(195, 161, 106, 0.075);
+  color: #F0E4D0;
+  box-shadow: inset 0 0 0 1px rgba(210, 177, 122, 0.08);
+}
+
+/* Diagonal hatch divider band */
+.stripes {
+  background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.07) 0 1px, transparent 1px 11px);
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+
+/* Rainbow glow behind the primary CTA */
+@keyframes ns-breathe { 0%,100% { opacity: .55; transform: scale(1); } 50% { opacity: .9; transform: scale(1.06); } }
+@keyframes ns-spin { to { transform: rotate(360deg); } }
+.cta-glow {
+  position: absolute; inset: -10px -14px; border-radius: 999px; z-index: -1; filter: blur(18px);
+  background: conic-gradient(from 0deg, #FF8A3D, #FF3DA5, #8B5CF6, #3B82F6, #22D3EE, #FF8A3D);
+  animation: ns-breathe 5s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }

@@ -78,9 +78,9 @@ function showWindow() {
 function createWindow() {
   win = new BrowserWindow({
     width: 1180, height: 780, minWidth: 900, minHeight: 620,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#0B0B0E" : "#FAFAF9",
+    backgroundColor: "#000000",
     titleBarStyle: "hidden",
-    titleBarOverlay: { color: "#00000000", symbolColor: "#6B6B6B", height: 40 },
+    titleBarOverlay: { color: "#00000000", symbolColor: "#A5A5AD", height: 44 },
     webPreferences: { preload: join(__dirname, "../preload/index.js"), sandbox: false },
   });
   win.webContents.setWindowOpenHandler(({ url }) => { openSafe(url); return { action: "deny" }; });
