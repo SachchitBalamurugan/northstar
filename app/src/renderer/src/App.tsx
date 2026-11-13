@@ -22,7 +22,7 @@ const NAV: { id: Screen; label: string }[] = [
   { id: "knowledge", label: "Knowledge" },
 ];
 
-const IRIDESCENT = "conic-gradient(from var(--ns-angle, 0deg), #FF8A3D, #FF3DA5, #8B5CF6, #3B82F6, #22D3EE, #FF8A3D)";
+const IRIDESCENT = "conic-gradient(from var(--ns-angle, 0deg), #4C8DFF, #A78BFA, #FF4FD8, #FF5C5C, #FFC93C, #3DDC84, #22D3EE, #4C8DFF)";
 
 /** The center "home" tab: iridescent rotating ring + glow, icon, and solid white when active. */
 function DashboardTab({ active, onClick }: { active: boolean; onClick: () => void }) {

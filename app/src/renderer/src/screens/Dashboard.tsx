@@ -12,6 +12,12 @@ import { loadDashboard, type DashboardData, type Priority, type PriorityKind } f
 
 const ICON: Record<PriorityKind, typeof Mail> = { focus: Target, email: Mail, calendar: CalendarPlus, application: FileText, task: Sparkles };
 const LABEL: Record<PriorityKind, string> = { focus: "Focus", email: "Email", calendar: "Calendar", application: "Application", task: "Suggestion" };
+// Antigravity-style neon color per kind: text class + icon tile style.
+const NEON: Record<PriorityKind, { text: string; hex: string }> = {
+  focus: { text: "neon-text-pink", hex: "#FF4FD8" }, email: { text: "neon-text-blue", hex: "#4C8DFF" },
+  calendar: { text: "neon-text-green", hex: "#3DDC84" }, application: { text: "neon-text-yellow", hex: "#FFC93C" }, task: { text: "neon-text-violet", hex: "#A78BFA" },
+};
+const tile = (k: PriorityKind) => ({ background: `${NEON[k].hex}1F`, boxShadow: `inset 0 0 0 1px ${NEON[k].hex}40, 0 0 14px ${NEON[k].hex}30`, color: NEON[k].hex });
 
 const soon = (iso?: string) => !!iso && new Date(iso).getTime() - Date.now() < 48 * 36e5;
 const openUrl = (url: string) => (window.northstar ? window.northstar.openExternal(url) : window.open(url, "_blank", "noopener"));
@@ -78,8 +84,8 @@ export default function Dashboard() {
                         <SecondaryButton onClick={() => openUrl(top.calendarUrl!)}><CalendarPlus size={16} /> Add to Google Calendar</SecondaryButton>
                       )}
                       <span className="ml-auto flex gap-2">
-                        {top.minutes && <Chip>{top.minutes} min</Chip>}
-                        {top.dueAt && <Chip tone={soon(top.dueAt) ? "accent" : "default"}>Due {relTime(top.dueAt)}</Chip>}
+                        {top.minutes && <Chip tone="violet">{top.minutes} min</Chip>}
+                        {top.dueAt && <Chip tone={soon(top.dueAt) ? "pink" : "blue"}>Due {relTime(top.dueAt)}</Chip>}
                       </span>
                     </div>
                   </GlowCard>
@@ -88,7 +94,7 @@ export default function Dashboard() {
             </AnimatePresence>
 
             {rest.length > 0 && (
-              <Window title="Up next" icon={<Sparkles size={15} />} tag="RANKED BY NORTHSTAR" meta={`${rest.length} more`}>
+              <Window glow title="Up next" icon={<Sparkles size={15} />} tag="RANKED BY NORTHSTAR" meta={`${rest.length} more`}>
                 <ul>
                   <AnimatePresence initial={false}>
                     {rest.map((p, i) => {
@@ -97,12 +103,12 @@ export default function Dashboard() {
                         <motion.li key={p.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.22 }}
                           className="group flex items-center gap-4 border-b-[0.8px] border-line px-5 py-4 last:border-b-0 hover:bg-white/[0.025]">
                           <span className="w-5 text-[12px] text-faint tabular-nums">{String(i + 2).padStart(2, "0")}</span>
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-white/[0.06] text-warm"><Icon size={16} /></span>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]" style={tile(p.kind)}><Icon size={16} /></span>
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-[15px] text-ink">{p.title}</p>
                             <p className="truncate text-[13px] text-faint">{p.why}</p>
                           </div>
-                          {p.dueAt && <span className={`shrink-0 text-[12px] tabular-nums ${soon(p.dueAt) ? "text-accent" : "text-faint"}`}>{relTime(p.dueAt)}</span>}
+                          {p.dueAt && <span className={`shrink-0 text-[12px] tabular-nums ${soon(p.dueAt) ? "neon-text-pink" : "text-faint"}`}>{relTime(p.dueAt)}</span>}
                           <button onClick={() => act(p)}
                             className="no-drag shrink-0 rounded-full border-[0.8px] border-white/15 px-3 py-1.5 text-[12.5px] text-warm opacity-70 transition-all duration-150 group-hover:opacity-100 hover:bg-white/10">
                             {actLabel(p)}
@@ -126,7 +132,7 @@ export default function Dashboard() {
                   return (
                     <li key={ev.id} className={`flex items-center gap-3 border-b-[0.8px] border-line py-3 last:border-b-0 ${past ? "opacity-40" : ""}`}>
                       <span className="w-16 shrink-0 text-[12.5px] text-muted tabular-nums">{clock(ev.start)}</span>
-                      {ev.northstar && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent shadow-[0_0_8px_#E26D45]" />}
+                      {ev.northstar && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#3DDC84] shadow-[0_0_8px_#3DDC84]" />}
                       <span className="truncate text-[14px] text-warm">{ev.title.replace(/^◎\s*/, "")}</span>
                     </li>
                   );
@@ -230,7 +236,7 @@ function CalendarAgentBox() {
                                 <p className="truncate text-[14.5px] text-ink">{c.title}</p>
                                 <p className="mt-0.5 text-[12.5px] text-warm tabular-nums">{when(c)}</p>
                                 <p className="mt-1.5 flex items-center gap-1.5 text-[11.5px] text-faint"><SrcIcon size={12} /> {c.sourceLabel}</p>
-                                {c.conflict && <p className="mt-1 text-[11.5px] text-[#F3A27F]">⚠ {c.conflict}</p>}
+                                {c.conflict && <p className="mt-1 text-[11.5px] neon-text-yellow">⚠ {c.conflict}</p>}
                               </div>
                               {st === "added" ? (
                                 <span className="flex shrink-0 items-center gap-1 text-[12.5px] text-emerald-300"><Check size={14} /> Added</span>
@@ -278,7 +284,7 @@ function CalendarAgentBox() {
 
 function KindTag({ kind }: { kind: PriorityKind }) {
   const Icon = ICON[kind];
-  return <span className="flex items-center gap-1.5 text-[12px] font-medium tracking-[0.06em] text-[#F3A27F] uppercase"><Icon size={13} /> {LABEL[kind]}</span>;
+  return <span className={`flex items-center gap-1.5 text-[12px] font-medium tracking-[0.06em] uppercase ${NEON[kind].text}`}><Icon size={13} /> {LABEL[kind]}</span>;
 }
 
 /** Thin 8am–11pm progress bar with a glowing "now" dot. */
@@ -291,8 +297,8 @@ function DayBar() {
     <div className="px-5 pt-4 pb-2">
       <div className="mb-2 flex justify-between text-[11px] text-faint"><span>8a</span><span>{left.toFixed(0)}h left</span><span>11p</span></div>
       <div className="relative h-[3px] rounded-full bg-white/[0.08]">
-        <div className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#FF8A3D] to-[#E26D45]" style={{ width: `${pct}%` }} />
-        <div className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_10px_#FF8A3D]" style={{ left: `${pct}%` }} />
+        <div className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#4C8DFF] via-[#A78BFA] to-[#FF4FD8] shadow-[0_0_10px_rgba(167,139,250,.6)]" style={{ width: `${pct}%` }} />
+        <div className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_10px_#A78BFA]" style={{ left: `${pct}%` }} />
       </div>
     </div>
   );
@@ -325,11 +331,11 @@ export function AskBar() {
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1], delay: 0.15 }}
         className="pointer-events-auto relative w-full max-w-[680px]">
         {/* soft rainbow halo */}
-        <div aria-hidden className="absolute -inset-[1px] rounded-full bg-[linear-gradient(90deg,#FF8A3D,#FF3DA5,#8B5CF6,#3B82F6)] opacity-40 blur-[10px]" />
+        <div aria-hidden className="absolute -inset-[1px] rounded-full bg-[linear-gradient(90deg,#4C8DFF,#A78BFA,#FF4FD8,#FF5C5C,#FFC93C,#3DDC84)] opacity-55 blur-[12px]" />
         <form onSubmit={(e) => { e.preventDefault(); submit(); }}
           onClick={() => ref.current?.focus()}
           className="no-drag relative flex h-[58px] items-center gap-3 rounded-full border-[0.8px] border-white/15 bg-[#0B0B0D]/85 pr-2 pl-5 shadow-[0_20px_60px_rgba(0,0,0,.6)] backdrop-blur-xl">
-          <Sparkles size={18} className="shrink-0 text-[#F3A27F]" />
+          <Sparkles size={18} className="shrink-0 neon-text-violet" />
           <input ref={ref} value={q} onChange={e => setQ(e.target.value)}
             placeholder="Ask Northstar anything about your day…"
             className="min-w-0 flex-1 bg-transparent text-[15.5px] text-ink placeholder:text-faint focus:outline-none" />
