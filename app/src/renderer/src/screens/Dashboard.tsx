@@ -2,7 +2,9 @@
 // One hero item, a short ranked list, today at a glance, calendar suggestions, and a floating "ask" input.
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Mail, CalendarPlus, FileText, Sparkles, Target, ArrowUp, ArrowUpRight, Check, CalendarDays } from "lucide-react";
+import { Mail, CalendarPlus, FileText, Sparkles, Target, ArrowUp, ArrowUpRight, Check, CalendarDays, Loader2, Plus, BookOpen, PenLine } from "lucide-react";
+import type { EventCandidate } from "@contracts/types";
+import { suggestEvents, addEvent } from "@/calendarAgent";
 import { Heading, Eyebrow, GlowCard, PrimaryButton, SecondaryButton, Window, Chip, relTime, clock } from "@/components/ui";
 import { useUI } from "@/store";
 import { approve, draftReply } from "@/api";
@@ -133,7 +135,7 @@ export default function Dashboard() {
               </ul>
             </Window>
 
-            {data.calendarAdds.length > 0 && (
+            {(
               <Window title="Add to calendar" icon={<CalendarPlus size={15} />} tag="SUGGESTED">
                 <ul className="px-5 py-2">
                   {data.calendarAdds.map(c => (
@@ -149,6 +151,7 @@ export default function Dashboard() {
                     </li>
                   ))}
                 </ul>
+                <CalendarAgentBox />
               </Window>
             )}
 
@@ -164,6 +167,111 @@ export default function Dashboard() {
       )}
 
 
+    </div>
+  );
+}
+
+/**
+ * Chat box at the end of "Add to calendar". The user describes an event; the agent searches mail, Knowledge files,
+ * approvals and calendar for related details and proposes events. Each one waits for the user's Add (approve) or Skip.
+ */
+function CalendarAgentBox() {
+  const [q, setQ] = useState("");
+  const [asked, setAsked] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [cands, setCands] = useState<EventCandidate[]>([]);
+  const [status, setStatus] = useState<Record<string, "adding" | "added" | "link" | "skipped">>({});
+
+  const search = async () => {
+    const text = q.trim(); if (!text || busy) return;
+    setBusy(true); setAsked(text); setCands([]); setStatus({});
+    const found = await suggestEvents(text);
+    setCands(found); setBusy(false); setQ("");
+  };
+  const add = async (c: EventCandidate) => {
+    setStatus(s => ({ ...s, [c.id]: "adding" }));
+    const r = await addEvent(c);
+    setStatus(s => ({ ...s, [c.id]: r.via === "service" ? "added" : "link" }));
+  };
+  const when = (c: EventCandidate) => {
+    const s = new Date(c.start), e = new Date(c.end);
+    return `${s.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })} · ${clock(c.start)}–${clock(c.end)}`
+      + (e.getDate() !== s.getDate() ? " (+1d)" : "");
+  };
+  const visible = cands.filter(c => status[c.id] !== "skipped");
+
+  return (
+    <div className="border-t-[0.8px] border-line">
+      <AnimatePresence initial={false}>
+        {(busy || asked) && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }} className="overflow-hidden">
+            <div className="px-5 pt-4">
+              {asked && <p className="mb-3 ml-auto w-fit max-w-[85%] rounded-[14px] rounded-br-[4px] bg-white/[0.08] px-3.5 py-2 text-[13.5px] text-ink">{asked}</p>}
+              {busy ? (
+                <p className="flex items-center gap-2 pb-4 text-[13px] text-muted">
+                  <Loader2 size={14} className="animate-spin text-accent" /> Searching your email, files and calendar…
+                </p>
+              ) : visible.length > 0 ? (
+                <div className="pb-4">
+                  <p className="mb-2.5 text-[12.5px] text-faint">
+                    Found {visible.length} {visible.length === 1 ? "event" : "events"}. Nothing is added until you say so.
+                  </p>
+                  <ul className="flex flex-col gap-2">
+                    <AnimatePresence initial={false}>
+                      {visible.map((c, i) => {
+                        const st = status[c.id];
+                        const SrcIcon = c.source === "email" ? Mail : c.source === "knowledge" ? BookOpen : c.source === "approval" ? Sparkles : c.source === "calendar" ? CalendarDays : PenLine;
+                        return (
+                          <motion.li key={c.id} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0, transition: { delay: i * 0.06 } }} exit={{ opacity: 0, height: 0 }}
+                            className={`rounded-[12px] border-[0.8px] p-3.5 transition-colors ${st === "added" || st === "link" ? "border-emerald-400/30 bg-emerald-400/[0.04]" : "border-line bg-raised"}`}>
+                            <div className="flex items-start gap-3">
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-[14.5px] text-ink">{c.title}</p>
+                                <p className="mt-0.5 text-[12.5px] text-warm tabular-nums">{when(c)}</p>
+                                <p className="mt-1.5 flex items-center gap-1.5 text-[11.5px] text-faint"><SrcIcon size={12} /> {c.sourceLabel}</p>
+                                {c.conflict && <p className="mt-1 text-[11.5px] text-[#F3A27F]">⚠ {c.conflict}</p>}
+                              </div>
+                              {st === "added" ? (
+                                <span className="flex shrink-0 items-center gap-1 text-[12.5px] text-emerald-300"><Check size={14} /> Added</span>
+                              ) : st === "link" ? (
+                                <span className="flex shrink-0 items-center gap-1 text-[12px] text-emerald-300" title="Google Calendar opened with this event filled in. Press Save there.">
+                                  <ArrowUpRight size={13} /> Save it in Google
+                                </span>
+                              ) : (
+                                <div className="flex shrink-0 items-center gap-1.5">
+                                  <button onClick={() => setStatus(s => ({ ...s, [c.id]: "skipped" }))}
+                                    className="no-drag rounded-full px-2.5 py-1.5 text-[12.5px] text-faint hover:text-warm">Skip</button>
+                                  <button onClick={() => add(c)} disabled={st === "adding"}
+                                    className="no-drag flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-[12.5px] font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50">
+                                    {st === "adding" ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Add
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </motion.li>
+                        );
+                      })}
+                    </AnimatePresence>
+                  </ul>
+                </div>
+              ) : asked ? (
+                <p className="pb-4 text-[13px] text-faint">All set. Nothing left to add.</p>
+              ) : null}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <form onSubmit={(e) => { e.preventDefault(); search(); }} className="flex items-center gap-2 px-4 py-3">
+        <input value={q} onChange={e => setQ(e.target.value)} disabled={busy}
+          placeholder="Add an event… e.g. career fair next Tue 2pm"
+          className="no-drag h-10 min-w-0 flex-1 rounded-full border-[0.8px] border-line bg-white/[0.03] px-4 text-[13.5px] text-ink placeholder:text-faint focus:border-white/25 focus:outline-none" />
+        <button type="submit" disabled={!q.trim() || busy} aria-label="Find events"
+          className="no-drag flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-black transition-opacity disabled:opacity-25">
+          {busy ? <Loader2 size={16} className="animate-spin" /> : <ArrowUp size={16} />}
+        </button>
+      </form>
     </div>
   );
 }
