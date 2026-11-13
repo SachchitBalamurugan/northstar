@@ -7,6 +7,7 @@ import { Heading, Lead, Eyebrow, Window, PrimaryButton, TextLink, Why, Chip, rel
 import { approveEdited } from "@/assistApi";
 import GoogleConnect from "@/components/GoogleConnect";
 import RefineControls from "@/components/RefineControls";
+import InboxBrief from "@/screens/InboxBrief";
 
 const TWO_DAYS = 2 * 24 * 36e5;
 
@@ -67,6 +68,7 @@ export default function Inbox() {
 
   return (
     <div className="max-w-[860px]">
+      <InboxBrief />
       <GoogleConnect onSynced={() => { getTriage().then(setTriage); }} />
       <Eyebrow className="mb-4">Inbox</Eyebrow>
       <Heading size="lg" className="mb-6">Only what<br />needs <span className="text-glow">you.</span></Heading>

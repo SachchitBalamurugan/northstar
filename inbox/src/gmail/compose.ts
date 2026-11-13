@@ -9,6 +9,7 @@ import { MEMORY_URL } from "../config.js";
 import { complete, llmAvailable } from "../llm.js";
 import { contextToText, getContext } from "../memory.js";
 import { newProposal } from "../store.js";
+import { fixSignOff, signerName, signRule } from "../signer.js";
 
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 const NEEDS_RESEARCH = /\b(latest|news|recent|today|this week|update|trends?|what'?s new|happening)\b/i;
@@ -34,20 +35,21 @@ export async function composeEmail(instruction: string) {
   const brief = NEEDS_RESEARCH.test(instruction) ? await researchBrief(topic) : null;
   const ctx = await getContext(`writing style, profile, signature, ${topic}`).catch(() => null);
 
+  const signer = await signerName();
   let subject: string, body: string;
   if (llmAvailable()) {
     const out = await complete({
       tier: "smart", schema: Draft, schemaName: "email",
       system: "You write emails for a busy student. Match their writing style from the context. Short paragraphs, friendly, " +
         "no filler. If research notes are given, summarize the 3-5 most important items clearly and include their source links " +
-        "at the end as a short 'Sources' list. Never invent facts beyond the notes. Sign off with the student's name if known.",
+        "at the end as a short 'Sources' list. Never invent facts beyond the notes." + signRule(signer),
       input: [
         `Request: ${instruction}`, `Recipient: ${to}`,
         ctx ? `About the student (context):\n${contextToText(ctx, 1800)}` : "",
         brief ? `Research notes:\n${brief.text}\n\nSources:\n${brief.citations.map((c, i) => `[${i + 1}] ${c.title} ${c.url}`).join("\n")}` : "",
       ].filter(Boolean).join("\n\n"),
     });
-    subject = out.subject; body = out.body;
+    subject = out.subject; body = fixSignOff(out.body, signer);
   } else {
     subject = topic.length > 3 ? topic[0].toUpperCase() + topic.slice(1) : "Hello";
     body = `Hi,\n\n${brief?.text ?? `I wanted to reach out about ${topic}.`}\n\nBest,`;

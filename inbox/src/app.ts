@@ -14,6 +14,7 @@ import { calendarRoutes, syncCalendar } from "./calendar/routes.js";
 import { triageRoutes, runTriage } from "./triage/routes.js";
 import { courseRoutes } from "./courses/routes.js";
 import { composeRoutes } from "./gmail/compose.js";
+import { briefRoutes, regenerateBrief } from "./triage/brief.js";
 import { authStatus } from "./google/status.js";
 
 export interface SyncResult {
@@ -48,6 +49,7 @@ async function syncOnce(): Promise<SyncResult> {
   } catch (err) {
     errors.push(`triage: ${(err as Error).message}`);
   }
+  if (triaged) regenerateBrief().catch(() => {});
   if (errors.length) console.warn("[sync]", errors.join("; "));
   return { source, emails, events, triaged, ...(errors.length ? { error: errors.join("; ") } : {}) };
 }
@@ -110,5 +112,6 @@ export async function buildServer(opts: { logger?: boolean } = {}) {
   await app.register(triageRoutes);
   await app.register(courseRoutes);
   await app.register(composeRoutes);
+  await app.register(briefRoutes);
   return app;
 }

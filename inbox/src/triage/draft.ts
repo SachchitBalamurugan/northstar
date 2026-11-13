@@ -1,3 +1,4 @@
+import { fixSignOff, signerName, signRule } from "../signer.js";
 // Draft a reply in the student's voice -> `send_reply` Proposal. The Gmail agent's approve handler
 // consumes payload { emailId, threadId, to, subject, body, originalBody, autoSend }.
 import { getCache, listProposals, newProposal } from "../store.js";
@@ -133,11 +134,13 @@ export async function draftReply(emailId: string): Promise<Proposal> {
     .join("\n")
     .slice(0, 1500);
 
+  const signer = await signerName();
+  const signOff = fixSignOff(style.signOff, signer);
   let draft: { subject: string; body: string };
   try {
     const out = await complete({
       tier: "fast",
-      system: `${DRAFT_SYSTEM}\nMaya's exact sign-off is:\n${style.signOff}`,
+      system: `${DRAFT_SYSTEM}\nThe exact sign-off is:\n${signOff}${signRule(signer)}`,
       input: draftUserPrompt({
         styleNotes: style.notes, senderContext, from: email.from, fromEmail: email.fromEmail,
         subject: email.subject, receivedAt: email.receivedAt, body: email.bodyText.slice(0, 4000), asks: triaged.asks,
@@ -145,7 +148,7 @@ export async function draftReply(emailId: string): Promise<Proposal> {
       schema: DraftSchema,
       schemaName: "draft_reply",
     });
-    draft = { subject: replySubject(out.subject || email.subject), body: ensureSignOff(out.body, style) };
+    draft = { subject: replySubject(out.subject || email.subject), body: fixSignOff(ensureSignOff(out.body, style), signer) };
   } catch {
     draft = mockDraft(email, triaged, style);
   }
