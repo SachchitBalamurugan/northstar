@@ -7,7 +7,7 @@ import FloatingHandoff from "./components/FloatingHandoff";
 import Dashboard, { AskBar } from "./screens/Dashboard";
 import Now from "./screens/Now";
 import Approve from "./screens/Approve";
-import Inbox from "./screens/Inbox";
+import Workflow from "./screens/Workflow";
 import Knowledge from "./screens/Knowledge";
 import Focus from "./screens/Focus";
 import Onboarding from "./screens/Onboarding";
@@ -18,7 +18,7 @@ const NAV: { id: Screen; label: string }[] = [
   { id: "now", label: "Focus" },
   { id: "approve", label: "Approve" },
   { id: "dashboard", label: "Dashboard" },
-  { id: "inbox", label: "Inbox" },
+  { id: "workflow", label: "Workflow" },
   { id: "knowledge", label: "Knowledge" },
 ];
 
@@ -155,7 +155,7 @@ export default function App() {
             {screen === "dashboard" && <Dashboard />}
             {screen === "now" && <Now />}
             {screen === "approve" && <Approve />}
-            {screen === "inbox" && <Inbox />}
+            {screen === "workflow" && <Workflow />}
             {screen === "knowledge" && <Knowledge />}
           </motion.div>
         </AnimatePresence>

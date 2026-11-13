@@ -24,7 +24,7 @@ function greeting() {
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [done, setDone] = useState<Set<string>>(new Set());
-  const { setScreen, startFocus } = useUI();
+  const { setScreen, startFocus, openWorkflow } = useUI();
 
   useEffect(() => {
     let alive = true;
@@ -156,7 +156,7 @@ export default function Dashboard() {
             )}
 
             <div className="flex gap-3 px-1 text-[13px] text-faint">
-              <button onClick={() => setScreen("inbox")} className="no-drag hover:text-warm">{data.counts.emails} emails need you</button>
+              <button onClick={() => openWorkflow("inbox")} className="no-drag hover:text-warm">{data.counts.emails} emails need you</button>
               <span>·</span>
               <button onClick={() => setScreen("approve")} className="no-drag hover:text-warm">{data.counts.approvals} to approve</button>
               <span>·</span>
@@ -175,7 +175,7 @@ export default function Dashboard() {
  * Chat box at the end of "Add to calendar". The user describes an event; the agent searches mail, Knowledge files,
  * approvals and calendar for related details and proposes events. Each one waits for the user's Add (approve) or Skip.
  */
-function CalendarAgentBox() {
+export function CalendarAgentBox() {
   const [q, setQ] = useState("");
   const [asked, setAsked] = useState("");
   const [busy, setBusy] = useState(false);

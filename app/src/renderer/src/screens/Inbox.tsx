@@ -59,7 +59,7 @@ export default function Inbox() {
   const total = triage ? triage.needsYou.filter((e) => !done[e.id]).length : 0;
 
   return (
-    <div className="mx-auto max-w-[760px]">
+    <div className="max-w-[860px]">
       <Eyebrow className="mb-4">Inbox</Eyebrow>
       <Heading size="lg" className="mb-6">Only what<br />needs <span className="text-glow">you.</span></Heading>
       {triage && (
