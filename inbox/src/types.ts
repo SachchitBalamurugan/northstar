@@ -49,6 +49,7 @@ export interface CachedEmail {
   labels: string[];         // e.g. ["INBOX","UNREAD"]
   listUnsubscribe?: string; // URL from the List-Unsubscribe header, if any
   opened?: boolean;         // false if still UNREAD
+  sent?: boolean;           // the user's own SENT message (cache.sentEmails)
 }
 
 /** One normalized Google Calendar event (and fixtures/events.json). */
@@ -70,4 +71,8 @@ export interface Cache {
   lastSyncAt?: string;
   triage?: TriageResponse;
   triagedAt?: string;
+  sentEmails?: CachedEmail[]; // the user's SENT mail, last 14 days (follow-up detection)
+  userEmail?: string;
+  notices?: import("./followups.js").Notice[];
+  followupSeen?: string[];  // dedupe keys `${kind}:${id}` that already fired
 }

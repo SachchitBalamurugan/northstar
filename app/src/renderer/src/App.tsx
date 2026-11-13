@@ -6,6 +6,7 @@ import { fetchKnownName } from "./profile";
 import { AmbientGlow, GlassPill, LogoMark } from "./components/ui";
 import FloatingHandoff from "./components/FloatingHandoff";
 import GoogleStatus from "./components/GoogleStatus";
+import { NotificationBell } from "./components/Notifications";
 import { ProfileButton, ProfilePanel } from "./components/Profile";
 import Dashboard, { AskBar } from "./screens/Dashboard";
 import Now from "./screens/Now";
@@ -160,6 +161,7 @@ export default function App() {
         </div>
 
         <div className="ml-auto flex items-center gap-4">
+          <NotificationBell />
           <GoogleStatus />
           <ProfileButton />
           <span title={`${live}/3 services live. Offline services use demo data.`} className="no-drag flex items-center gap-1.5">

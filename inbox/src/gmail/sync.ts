@@ -60,7 +60,9 @@ function syncMock(): { emails: number } {
     }
     throw err;
   }
-  const emails = sortNewestFirst(items);
+  const emails = sortNewestFirst(items.filter((e) => !e.sent));
+  const sent = items.filter((e) => e.sent);
+  if (sent.length) updateCache({ sentEmails: sortNewestFirst(sent) });
   updateCache({ emails, lastSyncAt: new Date().toISOString() });
   return { emails: emails.length };
 }
@@ -121,6 +123,29 @@ async function fetchMessages(gmail: Gmail, ids: string[]): Promise<CachedEmail[]
   return fetched.filter((e): e is CachedEmail => !!e && !e.labels.some((l) => SKIP_LABELS.has(l)));
 }
 
+const SENT_DAYS = 14;
+/** The user's own SENT mail (last 14 days) for follow-up detection; kept apart from `emails` so it is never triaged. */
+async function syncSent(gmail: Gmail): Promise<void> {
+  const res = await gmail.users.messages.list({ userId: "me", q: `in:sent newer_than:${SENT_DAYS}d`, maxResults: 40 });
+  const ids = (res.data.messages ?? []).map((m) => m.id).filter((x): x is string => !!x);
+  const prev = getCache().sentEmails ?? [];
+  const have = new Map(prev.map((e) => [e.id, e]));
+  const todo = ids.filter((id) => !have.has(id));
+  const fetched = await mapLimit(todo, CONCURRENCY, async (id): Promise<CachedEmail | undefined> => {
+    try {
+      const r = await gmail.users.messages.get({ userId: "me", id, format: "full" });
+      return { ...normalizeMessage(r.data), sent: true };
+    } catch (err) {
+      if (isNotFound(err)) return undefined;
+      throw err;
+    }
+  });
+  const cutoff = Date.now() - SENT_DAYS * 24 * 60 * 60 * 1000;
+  const keep = new Set(ids);
+  const all = [...prev.filter((e) => keep.has(e.id)), ...fetched.filter((e): e is CachedEmail => !!e)].filter((e) => ts(e) >= cutoff);
+  updateCache({ sentEmails: sortNewestFirst(all) });
+}
+
 async function syncReal(): Promise<{ emails: number }> {
   const gmail = google.gmail({ version: "v1", auth: await getAuthedClient() });
   const cache = getCache();
@@ -144,7 +169,12 @@ async function syncReal(): Promise<{ emails: number }> {
   const fresh = await fetchMessages(gmail, ids);
   const newCount = fresh.filter((e) => !known.has(e.id)).length;
   const emails = mergeEmails(cache.emails, fresh);
-  updateCache({ emails, historyId: newHistoryId, lastSyncAt: new Date().toISOString() });
+  updateCache({ emails, historyId: newHistoryId, lastSyncAt: new Date().toISOString(), ...(profile.data.emailAddress ? { userEmail: profile.data.emailAddress } : {}) });
+  try {
+    await syncSent(gmail);
+  } catch (err) {
+    console.warn("[gmail] sent sync failed:", (err as Error).message);
+  }
 
   console.log(`[gmail] synced ${newCount} new emails (${emails.length} cached)`);
   await postEvent({ source: "gmail", kind: "observation", text: `Synced ${newCount} new emails`, tags: ["sync"] });

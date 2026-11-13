@@ -58,7 +58,7 @@ export function ensureCacheSource(source: DataSource = useFixtures() ? "fixtures
     if (!cache.source) updateCache({ source } as Partial<StampedCache>);
     return false;
   }
-  updateCache({ emails: [], events: [], historyId: undefined, lastSyncAt: undefined, triage: undefined, triagedAt: undefined, source } as Partial<StampedCache>);
+  updateCache({ emails: [], events: [], historyId: undefined, lastSyncAt: undefined, triage: undefined, triagedAt: undefined, sentEmails: undefined, notices: undefined, followupSeen: undefined, userEmail: undefined, source } as Partial<StampedCache>);
   dropPending("send_reply");
   dropPending("create_event");
   dropPending("unsubscribe");

@@ -1,6 +1,7 @@
 // Electron main. The "Shell" sub-agent owns this file (tray, hotkeys, notifications).
 import { app, BrowserWindow, shell, Tray, Menu, nativeImage, globalShortcut, ipcMain, Notification, screen, systemPreferences } from "electron";
 import { join } from "path";
+import { readFileSync, writeFileSync } from "fs";
 import { deflateSync } from "zlib";
 import { execFileSync } from "child_process";
 
@@ -357,6 +358,69 @@ function openSafe(url: unknown) {
   } catch { /* ignore invalid urls */ }
 }
 
+// ---------- follow-up notifications (inbox :7702) ----------
+const INBOX = "http://127.0.0.1:7702";
+interface Notice { id: string; kind: string; title: string; body: string; proposalId?: string; createdAt: string; read: boolean }
+let shownIds: Set<string> | null = null;
+let unreadCount = 0;
+let pendingApprove = 0;
+function shownFile() { return join(app.getPath("userData"), "shown-notices.json"); }
+function loadShown(): Set<string> {
+  if (shownIds) return shownIds;
+  try { const a = JSON.parse(readFileSync(shownFile(), "utf8")); shownIds = new Set(Array.isArray(a) ? a.map(String) : []); }
+  catch { shownIds = new Set(); }
+  return shownIds;
+}
+function saveShown() {
+  try { writeFileSync(shownFile(), JSON.stringify([...loadShown()].slice(-500))); } catch { /* ignore */ }
+}
+async function inboxFetch(path: string, method = "GET"): Promise<unknown> {
+  const res = await fetch(INBOX + path, { method, signal: AbortSignal.timeout(4000) });
+  if (!res.ok) throw new Error(String(res.status));
+  return res.json();
+}
+function updateTooltip() {
+  if (!tray) return;
+  const parts: string[] = [];
+  if (pendingApprove > 0) parts.push(`${pendingApprove} to approve`);
+  if (unreadCount > 0) parts.push(`${unreadCount} follow-up${unreadCount === 1 ? "" : "s"}`);
+  tray.setToolTip(parts.length ? `Northstar · ${parts.join(" · ")}` : "Northstar");
+}
+async function pollNotices() {
+  try {
+    const list = await inboxFetch("/notifications?unread=1");
+    if (!Array.isArray(list)) return;
+    const notices = list as Notice[];
+    unreadCount = notices.length;
+    updateTooltip();
+    const shown = loadShown();
+    let changed = false;
+    for (const n of notices) {
+      if (!n?.id || shown.has(n.id)) continue;
+      shown.add(n.id); changed = true;
+      if (!Notification.isSupported()) continue;
+      const toast = new Notification({
+        title: String(n.title ?? "Northstar"),
+        body: String(n.body ?? "") + (n.proposalId ? " · Draft ready to review" : ""),
+        silent: false,
+      });
+      toast.on("click", () => {
+        openMain("approve");
+        inboxFetch(`/notifications/${encodeURIComponent(n.id)}/read`, "POST").catch(() => {});
+      });
+      toast.show();
+    }
+    if (changed) saveShown();
+  } catch { /* inbox service down: stay quiet */ }
+}
+async function scanFollowups() {
+  try { await inboxFetch("/followups/scan", "POST"); } catch { /* ignore */ }
+  await pollNotices();
+}
+function startNoticePoller() {
+  setTimeout(() => { pollNotices(); setInterval(pollNotices, 30000); }, 10000);
+}
+
 // ---------- tray ----------
 function createTray() {
   tray = new Tray(trayIcon());
@@ -365,6 +429,7 @@ function createTray() {
     { label: "Open Northstar", click: showWindow },
     { label: "Hand off a task", accelerator: "Ctrl+Space", click: () => send("ns:command-bar") },
     { label: "Camera notch widget", type: "checkbox", checked: notchEnabled, click: (item) => setNotchEnabled(item.checked) },
+    { label: "Check for follow-ups now", click: () => { scanFollowups(); } },
     { label: "Touch the camera to open it", type: "checkbox", checked: touchEnabled, click: (item) => { touchEnabled = item.checked; sendNotchGeometry(); } },
     { type: "separator" },
     { label: "Quit", click: () => { quitting = true; app.quit(); } },
@@ -376,7 +441,8 @@ function createTray() {
 function registerIpc() {
   ipcMain.on("ns:badge", (_e, n: unknown) => {
     const count = Math.max(0, Math.floor(Number(n) || 0));
-    tray?.setToolTip(count > 0 ? `Northstar · ${count} to approve` : "Northstar");
+    pendingApprove = count;
+    updateTooltip();
     if (process.platform === "win32" && win && !win.isDestroyed()) {
       win.setOverlayIcon(count > 0 ? badgeDot() : null, `${count} pending`);
     }
@@ -429,6 +495,7 @@ if (!app.requestSingleInstanceLock()) {
     createBubble();
     createNotch();
     createTray();
+    startNoticePoller();
     // Resolution change, lid closed, external display plugged in: the cutout may have moved or gone.
     const refreshNotch = () => {
       hwNotch = readHwNotch();
