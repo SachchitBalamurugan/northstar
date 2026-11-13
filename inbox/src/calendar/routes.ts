@@ -14,7 +14,11 @@ import { createCalendarEvent, fmtDateTime } from "./create.js";
 import { addDays, atHour, dayKey, eventInterval, freeSlots, minutesBetween, startOfDay } from "./freebusy.js";
 import { DAY_END_HOUR, DAY_START_HOUR, DEFAULT_FOCUS_WINDOW, type FocusWindow, type PlannedBlock, parseFocusWindow, planBlocks } from "./planner.js";
 
+import { fetchGoogleRange } from "./sync.js";
 export { syncCalendar } from "./sync.js";
+
+const RANGE_TTL_MS = 60_000;
+const rangeCache = new Map<string, { at: number; events: CachedEvent[] }>();
 
 /** Events overlapping the local calendar day of `day`, sorted by start. */
 export function eventsOnDay(events: CachedEvent[], day: Date): CachedEvent[] {
@@ -117,11 +121,30 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
       const days = Math.min(45, Math.max(1, Number(req.query.days ?? 7) || 7));
       from = startOfDay(new Date()); to = addDays(from, days);
     }
-    const events = getCache().events
-      .filter((ev) => { const iv = eventInterval(ev); return iv && iv.start < to && iv.end > from; })
+    const inWindow = (ev: CachedEvent) => { const iv = eventInterval(ev); return !!iv && iv.start < to && iv.end > from; };
+    const cached = getCache().events.filter(inWindow);
+    let source = cached;
+    let error: string | undefined;
+    if (!useFixtures()) {
+      const key = `${from.toISOString()}|${to.toISOString()}`;
+      try {
+        let hit = rangeCache.get(key);
+        if (!hit || Date.now() - hit.at > RANGE_TTL_MS) {
+          hit = { at: Date.now(), events: await fetchGoogleRange(from, to) };
+          rangeCache.set(key, hit);
+          if (rangeCache.size > 50) rangeCache.delete(rangeCache.keys().next().value as string);
+        }
+        const ids = new Set(hit.events.map((e) => e.id));
+        source = [...hit.events, ...cached.filter((e) => e.createdByNorthstar && !ids.has(e.id))];
+      } catch (err) {
+        error = (err as Error).message;
+      }
+    }
+    const events = source
+      .filter(inWindow)
       .sort((a, b) => a.start.localeCompare(b.start))
       .map((ev) => ({ ...ev, ...toCalEvent(ev) })); // CalEvent plus location / description / allDay
-    return { from: from.toISOString(), to: to.toISOString(), events };
+    return { from: from.toISOString(), to: to.toISOString(), events, ...(error ? { error } : {}) };
   });
 
   // Edit (move / rename / retime) an event the user changed in the calendar UI. The user's own edit is the approval.
@@ -146,6 +169,7 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(502).send({ error: (err as Error).message });
       }
     }
+    rangeCache.clear();
     updateCache({ events: getCache().events.map((e) => (e.id === id ? next : e)).sort((a, c) => a.start.localeCompare(c.start)) });
     return { ok: true, event: { ...next, ...toCalEvent(next) } };
   });
@@ -163,6 +187,7 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(502).send({ error: (err as Error).message });
       }
     }
+    rangeCache.clear();
     updateCache({ events: getCache().events.filter((e) => e.id !== id) });
     return { ok: true };
   });

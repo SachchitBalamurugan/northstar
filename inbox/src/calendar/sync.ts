@@ -108,3 +108,28 @@ async function syncGoogle(): Promise<CachedEvent[]> {
   } while (pageToken);
   return out;
 }
+
+/** Live fetch of primary-calendar events in [from, to) (real mode only; throws on Google errors). */
+export async function fetchGoogleRange(from: Date, to: Date): Promise<CachedEvent[]> {
+  const { google } = await import("googleapis");
+  const calendar = google.calendar({ version: "v3", auth: await getAuthedClient() });
+  const out: CachedEvent[] = [];
+  let pageToken: string | undefined;
+  do {
+    const res = await calendar.events.list({
+      calendarId: "primary",
+      timeMin: from.toISOString(),
+      timeMax: to.toISOString(),
+      singleEvents: true,
+      orderBy: "startTime",
+      maxResults: 2500,
+      pageToken,
+    });
+    for (const ev of res.data.items ?? []) {
+      const n = normalizeGoogleEvent(ev);
+      if (n) out.push(n);
+    }
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  return out;
+}
