@@ -1,0 +1,13 @@
+// Bridge between Electron main and the renderer. The "Shell" sub-agent owns this file.
+import { contextBridge, ipcRenderer } from "electron";
+
+const api = {
+  onCommandBar: (cb: () => void) => { ipcRenderer.on("ns:command-bar", cb); return () => ipcRenderer.removeListener("ns:command-bar", cb); },
+  onDraftHotkey: (cb: () => void) => { ipcRenderer.on("ns:draft", cb); return () => ipcRenderer.removeListener("ns:draft", cb); },
+  setBadge: (n: number) => ipcRenderer.send("ns:badge", n),
+  notify: (title: string, body: string) => ipcRenderer.send("ns:notify", { title, body }),
+  openExternal: (url: string) => ipcRenderer.send("ns:open", url),
+};
+
+contextBridge.exposeInMainWorld("northstar", api);
+export type NorthstarBridge = typeof api;

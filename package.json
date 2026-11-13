@@ -1,0 +1,12 @@
+{
+  "name": "northstar",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix app run dev",
+    "dev:web": "npm --prefix app run web",
+    "dev:all": "concurrently -n memory,inbox,actions,app -c yellow,blue,magenta,green \"cd memory && uv run uvicorn main:app --port 7701\" \"npm --prefix inbox run dev\" \"npm --prefix actions run dev\" \"npm --prefix app run dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
