@@ -1,5 +1,5 @@
 // Electron main. The "Shell" sub-agent owns this file (tray, hotkeys, notifications).
-import { app, BrowserWindow, shell, Tray, Menu, nativeImage, nativeTheme, globalShortcut, ipcMain, Notification } from "electron";
+import { app, BrowserWindow, shell, Tray, Menu, nativeImage, globalShortcut, ipcMain, Notification, screen } from "electron";
 import { join } from "path";
 import { deflateSync } from "zlib";
 
@@ -92,6 +92,37 @@ function createWindow() {
   else win.loadFile(join(__dirname, "../renderer/index.html"));
 }
 
+// ---------- floating bubble (Clicky-style: lives at the top of the screen, drag to move, click to open) ----------
+let bubble: BrowserWindow | null = null;
+const BUBBLE = 76;
+
+function rendererUrl(hash = "") {
+  return process.env.ELECTRON_RENDERER_URL ? process.env.ELECTRON_RENDERER_URL + hash : null;
+}
+
+function createBubble() {
+  const wa = screen.getPrimaryDisplay().workArea;
+  bubble = new BrowserWindow({
+    width: BUBBLE, height: BUBBLE,
+    x: Math.round(wa.x + wa.width / 2 - BUBBLE / 2), y: wa.y + 10,
+    frame: false, transparent: true, backgroundColor: "#00000000", hasShadow: false,
+    resizable: false, maximizable: false, minimizable: false, fullscreenable: false,
+    skipTaskbar: true, alwaysOnTop: true,
+    webPreferences: { preload: join(__dirname, "../preload/index.js"), sandbox: false },
+  });
+  bubble.setAlwaysOnTop(true, "screen-saver");
+  bubble.setVisibleOnAllWorkspaces(true);
+  const url = rendererUrl("#bubble");
+  if (url) bubble.loadURL(url);
+  else bubble.loadFile(join(__dirname, "../renderer/index.html"), { hash: "bubble" });
+  bubble.on("closed", () => { bubble = null; });
+}
+
+function toggleMain() {
+  if (win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()) win.hide();
+  else showWindow();
+}
+
 function send(channel: string) {
   showWindow();
   const w = win;
@@ -137,6 +168,13 @@ function registerIpc() {
     n.show();
   });
   ipcMain.on("ns:open", (_e, url: unknown) => openSafe(url));
+  ipcMain.on("ns:bubble-move", (_e, x: unknown, y: unknown) => {
+    if (!bubble || bubble.isDestroyed()) return;
+    const nx = Math.round(Number(x)), ny = Math.round(Number(y));
+    if (Number.isFinite(nx) && Number.isFinite(ny)) bubble.setBounds({ x: nx, y: ny, width: BUBBLE, height: BUBBLE });
+  });
+  ipcMain.on("ns:bubble-click", () => toggleMain());
+  ipcMain.on("ns:bubble-command", () => send("ns:command-bar"));
 }
 
 // ---------- lifecycle ----------
@@ -149,6 +187,9 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     registerIpc();
     createWindow();
+    win?.once("ready-to-show", () => win?.hide());
+    win?.hide();
+    createBubble();
     createTray();
     globalShortcut.register("Control+Space", () => send("ns:command-bar"));
     globalShortcut.register("Control+Shift+D", () => send("ns:draft"));

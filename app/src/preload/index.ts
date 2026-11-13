@@ -7,6 +7,10 @@ const api = {
   setBadge: (n: number) => ipcRenderer.send("ns:badge", n),
   notify: (title: string, body: string) => ipcRenderer.send("ns:notify", { title, body }),
   openExternal: (url: string) => ipcRenderer.send("ns:open", url),
+  // Floating bubble
+  bubbleMove: (x: number, y: number) => ipcRenderer.send("ns:bubble-move", x, y),
+  bubbleClick: () => ipcRenderer.send("ns:bubble-click"),
+  bubbleCommand: () => ipcRenderer.send("ns:bubble-command"),
 };
 
 contextBridge.exposeInMainWorld("northstar", api);
