@@ -56,9 +56,10 @@ def redact(text: str) -> str:
 # --- subprocess plumbing ----------------------------------------------------
 def _env() -> dict[str, str]:
     env = dict(os.environ)
-    shims = str(config.SHIMS_DIR)
-    existing = env.get("PYTHONPATH")
-    env["PYTHONPATH"] = f"{shims}{os.pathsep}{existing}" if existing else shims
+    if sys.platform == "win32":  # on macOS/Linux the shim would shadow the real fcntl and import itself
+        shims = str(config.SHIMS_DIR)
+        existing = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = f"{shims}{os.pathsep}{existing}" if existing else shims
     env["UMEM_OFFLINE"] = "1"
     env.setdefault("PYTHONIOENCODING", "utf-8")
     return env
@@ -128,6 +129,10 @@ def remember(text: str, tags: list[str] | None = None, scope: str = "global") ->
     """Mirror one fact into umem. Returns True on success, False otherwise. Never raises."""
     if not available():
         return False
+    # MOCK data is the demo student "Maya": keep it inside the data dir's umem project and never write it
+    # to the real user's home-level (global) store. Real mode keeps the caller's scope (global per the brief).
+    if config.MOCK:
+        scope = "project"
     try:
         clean = redact(text).strip()
         if not clean:

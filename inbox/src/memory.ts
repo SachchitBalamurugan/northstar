@@ -3,6 +3,7 @@ import { MEMORY_URL } from "./config.js";
 import type { ContextResponse, MemoryEvent } from "./types.js";
 
 const TIMEOUT_MS = 1500;
+let down = false;
 
 async function call<T>(method: string, pathName: string, body?: unknown): Promise<T | undefined> {
   try {
@@ -16,9 +17,13 @@ async function call<T>(method: string, pathName: string, body?: unknown): Promis
       console.warn(`[memory] ${method} ${pathName} -> ${res.status}`);
       return undefined;
     }
+    if (down) console.warn("[memory] reachable again");
+    down = false;
     return (await res.json()) as T;
   } catch (err) {
-    console.warn(`[memory] unreachable: ${method} ${pathName} (${(err as Error).message})`);
+    // one line per outage, not one per call (a triage run makes dozens of calls)
+    if (!down) console.warn(`[memory] unreachable at ${MEMORY_URL}, continuing without it (${(err as Error).message})`);
+    down = true;
     return undefined;
   }
 }
@@ -32,7 +37,33 @@ export async function postEvent(ev: NewEvent): Promise<void> {
 
 /** POST :7701/context — read memory before deciding anything. Empty context if memory is down. */
 export async function getContext(query: string, k = 6): Promise<ContextResponse> {
-  return (await call<ContextResponse>("POST", "/context", { query, k })) ?? { snippets: [], knowledge: [] };
+  return normalizeContext(await call<unknown>("POST", "/context", { query, k }));
+}
+
+/**
+ * The memory service answers `{snippets: string[], knowledge: string[]}` where a knowledge item is
+ * "<file>: <excerpt>" (and "umem: <text>" for the umem mirror). The rest of inbox works with
+ * `{file, content}` and MemoryEvent-shaped snippets, so convert here. Object-shaped items pass through.
+ * Without this, a live memory service made /triage, /deadlines and /draft throw (k.content / s.text undefined).
+ */
+export function normalizeContext(raw: unknown): ContextResponse {
+  const r = (raw ?? {}) as { snippets?: unknown; knowledge?: unknown; umem?: unknown };
+  const out: ContextResponse = { snippets: [], knowledge: [] };
+  if (typeof r.umem === "string" && r.umem) out.umem = r.umem;
+  for (const k of Array.isArray(r.knowledge) ? r.knowledge : []) {
+    if (typeof k === "string") {
+      const m = /^([\w.-]+):\s?([\s\S]*)$/.exec(k);
+      if (m?.[1] === "umem") out.umem = out.umem ?? m[2];
+      else out.knowledge.push(m ? { file: m[1], content: m[2] } : { file: "memory", content: k });
+    } else if (k && typeof k === "object" && typeof (k as { content?: unknown }).content === "string") {
+      out.knowledge.push({ file: String((k as { file?: unknown }).file ?? "memory"), content: (k as { content: string }).content });
+    }
+  }
+  for (const s of Array.isArray(r.snippets) ? r.snippets : []) {
+    if (typeof s === "string") out.snippets.push({ ts: "", agent: "memory", source: "user", kind: "observation", text: s });
+    else if (s && typeof s === "object" && typeof (s as { text?: unknown }).text === "string") out.snippets.push(s as MemoryEvent);
+  }
+  return out;
 }
 
 /** Flatten a context response into a short text block for prompts. */

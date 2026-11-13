@@ -143,7 +143,8 @@ def _fts_query(query: str) -> str:
 def add_event(ev: models.MemoryEvent, *, mirror: bool = True) -> models.MemoryEvent:
     if not ev.id:
         ev.id = str(uuid.uuid4())
-    tags = ev.tags or []
+    ev.text = umem_bridge.redact(ev.text)  # never store secrets, in SQLite or umem
+    tags = ev.tags = [umem_bridge.redact(str(t)) for t in (ev.tags or [])]
     refs = ev.refs.model_dump(exclude_none=True) if ev.refs else {}
     with _lock:
         _db().execute(
@@ -176,14 +177,18 @@ def search_events(query: str, k: int = 8) -> list[models.MemoryEvent]:
             ).fetchall()
         except sqlite3.Error as exc:
             log.warning("FTS search failed (%s); falling back to LIKE", exc)
+            rows = []
+        if not rows:  # FTS error or no FTS hit (e.g. partial words): keyword LIKE fallback
             where = " OR ".join("(text LIKE ? OR tags LIKE ?)" for _ in tokens)
             params: list[Any] = []
             for t in tokens:
                 params += [f"%{t}%", f"%{t}%"]
-            rows = _db().execute(
-                f"SELECT * FROM events WHERE {where} ORDER BY ts DESC LIMIT ?",
-                (*params, k),
+            cand = _db().execute(
+                f"SELECT * FROM events WHERE {where} ORDER BY ts DESC LIMIT 200", params,
             ).fetchall()
+            low = [t.lower() for t in tokens]
+            cand.sort(key=lambda r: -sum(t in (r["text"] + " " + r["tags"]).lower() for t in low))
+            rows = cand[:k]
     return [_row_to_event(r) for r in rows]
 
 
@@ -215,6 +220,18 @@ def events_since(ts: str | None) -> list[models.MemoryEvent]:
     sql += " ORDER BY ts ASC"
     with _lock:
         rows = _db().execute(sql, params).fetchall()
+    return [_row_to_event(r) for r in rows]
+
+
+def max_event_rowid() -> int:
+    with _lock:
+        return int(_db().execute("SELECT COALESCE(MAX(rowid), 0) FROM events").fetchone()[0])
+
+
+def events_after_rowid(rowid: int) -> list[models.MemoryEvent]:
+    """Events inserted after a digest watermark, whatever their own `ts` says (oldest first)."""
+    with _lock:
+        rows = _db().execute("SELECT * FROM events WHERE rowid > ? ORDER BY rowid ASC", (rowid,)).fetchall()
     return [_row_to_event(r) for r in rows]
 
 
@@ -258,7 +275,9 @@ def list_proposals(status: str | None = None) -> list[models.Proposal]:
     sql += " ORDER BY createdAt DESC"
     with _lock:
         rows = _db().execute(sql, params).fetchall()
-    return [_row_to_proposal(r) for r in rows]
+    out = [_row_to_proposal(r) for r in rows]
+    out.sort(key=lambda p: -p.urgency)  # stable: most urgent (3) first, newest first within a level
+    return out
 
 
 def get_proposal(id: str) -> models.Proposal | None:

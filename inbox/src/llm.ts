@@ -5,7 +5,7 @@
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import type { z } from "zod";
-import { MOCK, OPENAI_API_KEY, OPENAI_MODEL_FAST, OPENAI_MODEL_SMART } from "./config.js";
+import { MOCK_ENV as MOCK, OPENAI_API_KEY, OPENAI_MODEL_FAST, OPENAI_MODEL_SMART } from "./config.js";
 
 export class LLMUnavailable extends Error {
   constructor(message = "LLM unavailable (MOCK=1 or OPENAI_API_KEY empty)") {
@@ -27,6 +27,11 @@ export interface CompleteOptions<T> {
   input: string | InputPart[];
   schema?: z.ZodType<T>;
   schemaName?: string;
+}
+
+/** False with MOCK=1 or without an API key; callers then use the deterministic rules. */
+export function llmAvailable(): boolean {
+  return !MOCK && OPENAI_API_KEY !== "";
 }
 
 let client: OpenAI | undefined;

@@ -3,12 +3,16 @@ import type { FastifyInstance } from "fastify";
 import type { Page } from "playwright";
 import { z } from "zod";
 import { BASE_URL } from "../config.js";
+import { fillForm, fillSummary } from "../fill/index.js";
+import { addRunStep, createRun, finishRun, isCancelled, RunCancelled } from "../runs.js";
 import { newPage, screenshotB64 } from "../browser.js";
 import { complete, llmAvailable } from "../llm.js";
 import { getContext, postEvent } from "../memory.js";
 import { createProposal, onApprove } from "../proposals.js";
 import type { SidekickStep } from "../types.js";
 import { classifyAction, needsDesktop, type ActionTarget } from "./safety.js";
+import { desktopAllowed, mockDesktop, runDesktopAgent } from "../desktop/agent.js";
+import { MOCK } from "../config.js";
 import { describeEl, elLocator, renderSnapshot, takeSnapshot, type SnapEl } from "./snapshot.js";
 
 const MAX_STEPS = 25;
@@ -19,7 +23,7 @@ type Frame = SidekickStep & { proposalId?: string };
 interface Run {
   instruction: string;
   /** Emits one frame; step numbers are assigned automatically. */
-  emit: (f: Omit<Frame, "step">) => void;
+  emit: (f: Omit<Frame, "step"> & { runStatus?: "done" | "stopped" | "error"; runDetail?: string }) => void;
   closed: () => boolean;
 }
 /** Every runner returns a one-line outcome for the memory event. */
@@ -86,7 +90,7 @@ async function runAgent(run: Run): Promise<Outcome> {
   const history: string[] = [];
   try {
     for (let i = 1; i <= MAX_STEPS; i++) {
-      if (run.closed()) return "cancelled (client disconnected)";
+      if (run.closed()) return "cancelled";
       const snap = await takeSnapshot(page);
       const decision = await complete({
         tier: "fast",
@@ -165,7 +169,7 @@ async function mockFixture(run: Run, kind: "unsubscribe" | "syllabus"): Promise<
     await page.goto(url, { waitUntil: "domcontentloaded" });
     run.emit({ action: "goto", detail: `Opened ${url}`, screenshot: await screenshotB64(page) });
     await pause();
-    if (run.closed()) return "cancelled (client disconnected)";
+    if (run.closed()) return "cancelled";
 
     const snap = await takeSnapshot(page);
     const want = kind === "unsubscribe" ? /unsubscribe/i : /syllabus/i;
@@ -176,7 +180,7 @@ async function mockFixture(run: Run, kind: "unsubscribe" | "syllabus"): Promise<
     await elLocator(page, el.index).click();
     run.emit({ action: "click", detail: `Clicked ${describeEl(el)}` });
     await pause();
-    if (run.closed()) return "cancelled (client disconnected)";
+    if (run.closed()) return "cancelled";
 
     const resultSel = kind === "unsubscribe" ? "#result" : "#syllabus";
     await page.locator(resultSel).waitFor({ state: "visible", timeout: 5000 });
@@ -201,7 +205,7 @@ async function mockCanned(run: Run): Promise<Outcome> {
     { action: "done", detail: "Demo mode: this is a canned run. Connect an API key to let me do this for real." },
   ];
   for (const f of frames) {
-    if (run.closed()) return "cancelled (client disconnected)";
+    if (run.closed()) return "cancelled";
     run.emit(f);
     await sleep(MOCK_DELAY_MS);
   }
@@ -251,12 +255,49 @@ onApprove("unsubscribe", async (p) => {
   }
 });
 
+// ---------- form fill from the command bar ----------
+const FILL_RE = /\bfill(ing)?\b/i;
+const FORM_RE = /\b(form|application|apply|sign[\s-]?up|questionnaire|survey)\b/i;
+
+/** The form URL when the instruction is a "fill this form" request this service should route to the filler. */
+export function fillTarget(instruction: string, mock: boolean): string | null {
+  if (!FILL_RE.test(instruction)) return null;
+  const m = /https?:\/\/[^\s"'<>]+/i.exec(instruction);
+  if (m) {
+    try {
+      return new URL(m[0].replace(/[.,;:!?)\]]+$/, "")).toString();
+    } catch {
+      return null;
+    }
+  }
+  // No URL: in demo mode use the local fixture; in real mode the agent loop finds the form itself.
+  return mock && FORM_RE.test(instruction) ? `${BASE_URL}/fixtures/internship.html` : null;
+}
+
+async function runFillTask(run: Run, url: string): Promise<Outcome> {
+  const proposal = await fillForm(url, {}, (action, detail) => {
+    if (run.closed()) throw new RunCancelled();
+    run.emit({ action, detail });
+  });
+  const detail = fillSummary(proposal);
+  const screenshot = typeof proposal.payload?.screenshot === "string" ? proposal.payload.screenshot : undefined;
+  run.emit({ action: "stopped", detail, proposalId: proposal.id, screenshot });
+  return `filled ${url}; ${detail}`;
+}
+
 // ---------- route ----------
 export default async function sidekickRoutes(app: FastifyInstance) {
-  app.post<{ Body: { instruction?: unknown } }>("/sidekick", async (req, reply) => {
+  app.post<{ Body: { instruction?: unknown; mode?: unknown } }>("/sidekick", async (req, reply) => {
     const raw0 = req.body?.instruction;
     const instruction = typeof raw0 === "string" ? raw0.trim() : "";
     if (!instruction) return reply.code(400).send({ error: "instruction is required" });
+
+    // Optional mode: "desktop" asks for real desktop control, "browser" keeps Sidekick in the browser.
+    const mode = req.body?.mode === "desktop" || req.body?.mode === "browser" ? req.body.mode : undefined;
+    const wantsDesktop = mode === "desktop" || (mode === undefined && needsDesktop(instruction));
+    // Guard rail: the real desktop agent runs only with DESKTOP_CONTROL=1 and an LLM (never in MOCK).
+    const useDesktop = wantsDesktop && desktopAllowed();
+    const demoDesktop = mode === "desktop" && MOCK;
 
     reply.hijack();
     const raw = reply.raw;
@@ -269,36 +310,76 @@ export default async function sidekickRoutes(app: FastifyInstance) {
       Vary: "Origin",
     });
 
-    let closed = false;
+    // The client may go away (the ask window closes) while the task keeps running; the run registry keeps
+    // recording it. Only POST /runs/:id/cancel or the step limit stops a run.
+    let gone = false;
     raw.on("close", () => {
-      closed = true;
+      gone = true;
     });
+    raw.on("error", () => {
+      gone = true;
+    });
+    const fillUrl = needsDesktop(instruction) || wantsDesktop ? null : fillTarget(instruction, !llmAvailable());
+    const record = createRun(fillUrl ? "fill" : "sidekick", instruction, fillUrl ?? undefined);
+    const runId = record.id;
     let step = 0;
+    let final = false;
     const run: Run = {
       instruction,
-      closed: () => closed,
+      closed: () => isCancelled(runId),
       emit: (f) => {
-        if (closed || raw.writableEnded) return;
-        const frame: Frame = { step: ++step, ...f };
+        if (final || isCancelled(runId)) return;
+        const { runStatus, runDetail, ...rest } = f;
+        const frame: Frame & { runId: string } = { step: ++step, ...rest, runId };
         if (frame.screenshot === undefined) delete frame.screenshot;
-        raw.write(`data: ${JSON.stringify(frame)}\n\n`);
+        if (frame.proposalId === undefined) delete frame.proposalId;
+        if (f.action === "done" || f.action === "stopped" || f.action === "error") {
+          final = true;
+          finishRun(runId, runStatus ?? f.action, { step: { action: runStatus ?? f.action, detail: runDetail ?? f.detail }, proposalId: f.proposalId });
+        } else addRunStep(runId, f.action, f.detail);
+        write(frame);
       },
+    };
+    const write = (frame: unknown) => {
+      if (gone || raw.destroyed || raw.writableEnded) return;
+      try {
+        raw.write(`data: ${JSON.stringify(frame)}\n\n`);
+      } catch {
+        gone = true;
+      }
     };
 
     let outcome: Outcome;
     try {
-      if (needsDesktop(instruction)) outcome = await desktopFallback(run);
+      if (demoDesktop) outcome = await mockDesktop(run);
+      else if (useDesktop) outcome = await runDesktopAgent(run);
+      else if (wantsDesktop || needsDesktop(instruction)) outcome = await desktopFallback(run);
+      else if (fillUrl) outcome = await runFillTask(run, fillUrl);
       else if (llmAvailable()) outcome = await runAgent(run);
       else if (/unsubscribe/i.test(instruction)) outcome = await mockFixture(run, "unsubscribe");
       else if (/syllabus/i.test(instruction)) outcome = await mockFixture(run, "syllabus");
       else outcome = await mockCanned(run);
     } catch (err) {
       const msg = err instanceof Error ? err.message.split("\n")[0] : String(err);
-      req.log.error({ err }, "sidekick failed");
-      run.emit({ action: "error", detail: `Something went wrong: ${msg}` });
+      if (!(err instanceof RunCancelled)) {
+        req.log.error({ err }, "sidekick failed");
+        run.emit({ action: "error", detail: `Something went wrong: ${msg}` });
+      }
       outcome = `error: ${msg}`;
     }
-    if (!raw.writableEnded) raw.end();
+    if (isCancelled(runId)) {
+      // The registry already ended the run as "Cancelled"; tell a client that is still listening.
+      write({ step: ++step, action: "error", detail: "Cancelled", runId });
+      outcome = "cancelled";
+    } else if (!final) {
+      // A runner returned without a final frame; never leave the run "running".
+      run.emit({ action: "error", detail: `Stopped unexpectedly: ${outcome}` });
+    }
+    try {
+      if (!raw.writableEnded && !raw.destroyed) raw.end();
+    } catch {
+      /* client already gone */
+    }
     void postEvent({ source: "screen", kind: "observation", text: `Sidekick: ${instruction} → ${outcome}`, tags: ["sidekick"] }).catch(() => {});
   });
 }

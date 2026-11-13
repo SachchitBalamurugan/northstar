@@ -1,0 +1,38 @@
+CS 61B: Data Structures
+Fall 2026 Syllabus (updated for the last five weeks of the term)
+
+Instructor: Prof. Daniel Lee (dlee@berkeley.edu)
+Head TA: Priya Natarajan (priya.n@berkeley.edu)
+Lecture: Mon/Wed/Fri 1:00-2:00 PM, Wheeler 150
+Course website: https://cs61b.example.edu
+Textbook: Algorithms, 4th edition (Sedgewick and Wayne). Free online notes are linked from the course website.
+
+Office hours: Prof. Lee holds office hours Tuesdays 3:00-4:30 PM in Soda 779. Priya holds TA office hours Thursdays 5:00-7:00 PM in Soda 341. Project office hours run every weekday evening in the week a project is due.
+
+Course description
+CS 61B covers the design and analysis of data structures: lists, trees, hash tables, heaps, graphs, sorting, and the software engineering habits needed to build a large program on your own. Programming is in Java.
+
+Grading: Projects 40%, Homework 15%, Labs 10%, Midterms 15% (two midterms, 7.5% each), Final exam 20%. Letter grades follow fixed cutoffs (A 90%, B 80%, C 70%); the course is not curved.
+
+Late policy: Every student has 5 slip days for the semester, with at most 2 used on any one project or homework. After slip days run out, late work loses 10% per day and is not accepted more than 3 days late. Labs cannot be turned in late. Slip days cannot be used on exams.
+
+Extensions: If you have a DSP accommodation or a serious personal situation, fill in the extension form on the course website at least 24 hours before the deadline. You do not need to explain private details.
+
+Remaining schedule
+
+- Homework 9 (Hashing) due Monday, November 16, 11:59 PM
+- Project 2B: Gitlet checkpoint due Friday, November 20, 11:59 PM
+- Midterm 2: Tuesday, Nov 24, 7:00 PM - 9:00 PM, Wheeler 150. Covers lectures 1 through 30.
+- No class Thursday, November 26 and Friday, November 27 (Thanksgiving break).
+- 12/2 Lab 12 (Graphs) due
+- Project 3: Build Your Own World due Friday, December 4, 11:59 PM
+- Homework 10 (Sorting) due Dec 9
+- Final exam: Wednesday, December 16, 8:00 AM - 11:00 AM, location announced on the course website
+
+Exam policy: Exams are closed book. You may bring one double-sided handwritten cheat sheet to each midterm and three sheets to the final. There are no makeup midterms; if you miss a midterm with a documented reason, the final exam score replaces it.
+
+Collaboration policy: Discuss ideas with anyone, but all code you submit for homework and projects must be written by you. Project 3 may be done with one partner. Always list the people you worked with at the top of your submission.
+
+Regrades: Regrade requests are open on Gradescope for one week after grades are released.
+
+Getting help: Post on Ed for the fastest answer. For anything private, email the head TA. Please do not email code.

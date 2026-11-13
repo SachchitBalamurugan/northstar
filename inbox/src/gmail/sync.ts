@@ -1,18 +1,19 @@
 // Gmail sync: fixtures in MOCK mode, otherwise incremental via historyId (full 7-day sync the first time).
 import { google, type gmail_v1 } from "googleapis";
-import { MOCK } from "../config.js";
 import { loadFixture } from "../fixtures.js";
 import { getAuthedClient } from "../google/auth.js";
+import { ensureCacheSource, useFixtures } from "../google/status.js";
 import { postEvent } from "../memory.js";
 import { getCache, updateCache } from "../store.js";
 import type { CachedEmail } from "../types.js";
 import { normalizeMessage } from "./parse.js";
 
 const WINDOW_DAYS = 7;
-const FULL_SYNC_QUERY = `newer_than:${WINDOW_DAYS}d -in:spam -in:trash`;
+const FULL_SYNC_QUERY = `newer_than:${WINDOW_DAYS}d -in:spam -in:trash -in:sent -in:drafts -in:chats`;
 const MAX_FULL_SYNC = 100;
 const CONCURRENCY = 5;
-const SKIP_LABELS = new Set(["DRAFT", "SPAM", "TRASH"]);
+// SENT: the student's own replies must not come back as mail that needs triage.
+const SKIP_LABELS = new Set(["DRAFT", "SPAM", "TRASH", "SENT", "CHAT"]);
 
 // ---- pure helpers (exported for tests) ----
 const ts = (e: CachedEmail) => Date.parse(e.receivedAt) || 0;
@@ -150,7 +151,9 @@ async function syncReal(): Promise<{ emails: number }> {
   return { emails: emails.length };
 }
 
-/** Sync mail into the cache. Returns the number of emails now cached. */
+/** Sync mail into the cache. Returns the number of emails now cached. Read-only: never sends or changes mail. */
 export async function syncGmail(): Promise<{ emails: number }> {
-  return MOCK ? syncMock() : syncReal();
+  const fixtures = useFixtures();
+  ensureCacheSource(fixtures ? "fixtures" : "google"); // never merge demo mail into the real inbox, or the reverse
+  return fixtures ? syncMock() : syncReal();
 }

@@ -174,6 +174,7 @@ class Candidate(BaseModel):
     course: str | None = None
     blocked: bool = False
     score: float = 0.0
+    goal: str | None = None   # the goals.md bullet this deadline serves, if any
 
 
 def _calendar_blocks(events: list[models.MemoryEvent]) -> list[models.MemoryEvent]:
@@ -226,6 +227,39 @@ def _candidates(events: list[models.MemoryEvent], now: datetime) -> list[Candida
     return out
 
 
+# ----------------------------------------------------------------------------- goal fit
+GOAL_BOOST = 2.0
+_GOAL_STOP = {
+    "the", "and", "for", "with", "this", "that", "from", "have", "your", "keep", "above", "least", "before",
+    "after", "next", "year", "semester", "summer", "fall", "spring", "more", "less", "take", "stay", "start",
+    "land", "days", "sent", "far", "out", "due", "form", "big", "all", "project", "projects", "deadline",
+    "deadlines", "homework", "email", "emails", "reply", "professor", "class", "classes", "course", "work",
+}
+
+
+def _goal_tokens(text: str) -> set[str]:
+    return {t for t in re.findall(r"[a-z0-9]+", text.lower())
+            if t not in _GOAL_STOP and (len(t) >= 4 or any(ch.isdigit() for ch in t)) and not t.isdigit()}
+
+
+def _tokens_match(a: str, b: str) -> bool:
+    """Equal, or one is a prefix of the other ('intern' ~ 'internship')."""
+    return a == b or (min(len(a), len(b)) >= 5 and (a.startswith(b) or b.startswith(a)))
+
+
+def _matching_goal(c: "Candidate", goals_md: str) -> str | None:
+    """First goals.md bullet that shares a keyword with the deadline (title, text, course/key tags)."""
+    hay = _goal_tokens(" ".join([c.title, c.event.text, c.course or "", c.key.replace("-", " ")]))
+    for line in goals_md.splitlines():
+        line = line.strip()
+        if not line.startswith(("-", "*")):
+            continue
+        goal = line.lstrip("-* ").strip()
+        if any(_tokens_match(g, h) for g in _goal_tokens(goal) for h in hay):
+            return goal.rstrip(".")
+    return None
+
+
 # ----------------------------------------------------------------------------- NextThing
 def _score(c: Candidate, now: datetime, focus: tuple[int, int]) -> float:
     days_left = max((c.due - now).total_seconds() / 86400, 0.0)
@@ -233,7 +267,8 @@ def _score(c: Candidate, now: datetime, focus: tuple[int, int]) -> float:
     effort = 0.5 + 0.5 * min(c.effort, EFFORT_CAP_MINUTES) / EFFORT_CAP_MINUTES
     energy = 1.0 if _in_focus(now, focus) else 0.75             # best hours per routines.md
     planned = 0.4 if c.blocked else 1.0                         # already on the calendar -> lower
-    return proximity * effort * energy * planned
+    goal_fit = GOAL_BOOST if c.goal else 1.0                    # serves a goal in goals.md -> higher
+    return proximity * effort * energy * planned * goal_fit
 
 
 def _next_thing(cands: list[Candidate], now: datetime, focus: tuple[int, int]) -> models.NextThing:
@@ -252,8 +287,11 @@ def _next_thing(cands: list[Candidate], now: datetime, focus: tuple[int, int]) -
     else:
         focus_part = f"and your best focus window is {_focus_label(focus)} per routines.md"
     why = f"Due {_fmt_due(best.due)}, {block_part}, {focus_part}."
+    if best.goal:
+        goal = best.goal if len(best.goal) <= 70 else best.goal[:67].rstrip() + "..."
+        why = f'{why[:-1]}; it also serves your goal "{goal}" in goals.md.'
     return models.NextThing(
-        title=best.title[:60],
+        title=best.title[:60].strip(),
         why=why,
         minutes=max(25, min(MAX_BLOCK_MINUTES, best.effort)),
         proposalId=None if best.blocked else _short_id("deadline_no_block", best.key),
@@ -272,7 +310,8 @@ def _card(kind: str, key: str, title: str, why: str, urgency: int, now: datetime
         title=title[:60],
         why=why,
         payload={"kind": kind, **payload},
-        urgency=urgency,  # type: ignore[arg-type]
+        # detectors rank 1 = most pressing; the contract/UI sort 3 = most urgent first, so flip here
+        urgency=4 - urgency,  # type: ignore[arg-type]
         dueAt=due_at,
         status="pending",
     )
@@ -410,7 +449,7 @@ def _pick_cards(groups: list[list[models.Proposal]]) -> list[models.Proposal]:
             if len(chosen) >= MAX_CARDS:
                 break
             chosen.append(card)
-    chosen.sort(key=lambda c: (c.urgency, c.dueAt or "9999", c.title))
+    chosen.sort(key=lambda c: (-c.urgency, c.dueAt or "9999", c.title))
     return chosen[:MAX_CARDS]
 
 
@@ -423,6 +462,9 @@ def compute(events: list[models.MemoryEvent], knowledge: dict[str, str],
     people = knowledge.get("people.md", "")
     focus = _parse_focus_window(routines)
     cands = _candidates(events, now)
+    goals = knowledge.get("goals.md", "")
+    for c in cands:
+        c.goal = _matching_goal(c, goals)
     next_thing = _next_thing(cands, now, focus)
     cards = _pick_cards([
         _detect_deadline_no_block(cands, now, focus),
@@ -436,6 +478,18 @@ def compute(events: list[models.MemoryEvent], knowledge: dict[str, str],
     return models.InsightsResponse(
         nextThing=next_thing, cards=cards, computedAt=now.isoformat(), stale=False,
     )
+
+
+def _without_decided(result: models.InsightsResponse) -> models.InsightsResponse:
+    """Cards the user already approved/rejected must not come back as pending on the next digest."""
+    import storage
+
+    decided = {p.id for p in storage.list_proposals() if p.status != "pending"}
+    if decided:
+        result.cards = [c for c in result.cards if c.id not in decided]
+        if result.nextThing.proposalId in decided:
+            result.nextThing.proposalId = None
+    return result
 
 
 def _load_all_events() -> list[models.MemoryEvent]:
@@ -509,20 +563,43 @@ def run_digest(full: bool = False, now: datetime | None = None) -> models.Insigh
     global _cache, _cache_at
     now = now or _now()
     last = storage.get_meta("last_digest_ts")
-    new_events = list(storage.events_since(None if full else last))
+    # "New" means inserted since the last digest. Comparing event.ts with the digest time would miss
+    # events that describe something earlier (an email received this morning, synced just now).
+    watermark = None
+    if hasattr(storage, "events_after_rowid"):
+        watermark = storage.max_event_rowid()
+        seen = int(storage.get_meta("last_digest_rowid") or 0)
+        new_events = list(storage.events_since(None)) if full else list(storage.events_after_rowid(seen))
+    else:
+        new_events = list(storage.events_since(None if full else last))
     knowledge_text = _load_knowledge()
     if not config.MOCK and config.OPENAI_API_KEY:
         if _patch_knowledge(new_events, knowledge_text, full):
             knowledge_text = _load_knowledge()
     else:
         log.info("digest: MOCK or no API key, skipping knowledge patch")
-    result = compute(_load_all_events(), knowledge_text, now)
+    result = _without_decided(compute(_load_all_events(), knowledge_text, now))
     storage.replace_pending_proposals("memory", result.cards)
     storage.set_meta("last_digest_ts", now.isoformat())
+    if watermark is not None:
+        storage.set_meta("last_digest_rowid", str(watermark))
     with _lock:
         _cache, _cache_at = result, now
     log.info("digest done: next=%r cards=%d full=%s", result.nextThing.title, len(result.cards), full)
     return result
+
+
+def drop_card(proposal_id: str) -> None:
+    """Remove an approved/rejected card from the cached insights (called by the proposals routes)."""
+    global _cache
+    with _lock:
+        if _cache is None:
+            return
+        nt = _cache.nextThing
+        if nt.proposalId == proposal_id:
+            nt = nt.model_copy(update={"proposalId": None})
+        _cache = _cache.model_copy(update={
+            "nextThing": nt, "cards": [c for c in _cache.cards if c.id != proposal_id]})
 
 
 def _recompute_in_background(full: bool = False) -> None:
@@ -552,7 +629,7 @@ def get_insights() -> models.InsightsResponse:
     with _lock:
         cached, cached_at = _cache, _cache_at
     if cached is None:
-        result = compute(_load_all_events(), _load_knowledge(), now)  # pure Python, fast
+        result = _without_decided(compute(_load_all_events(), _load_knowledge(), now))  # pure Python, fast
         with _lock:
             _cache, _cache_at = result, now
         return result

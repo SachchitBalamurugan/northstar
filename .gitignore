@@ -30,4 +30,5 @@ __pycache__/
 # os / editor
 *.log
 .DS_Store
+.venv/
 Thumbs.db

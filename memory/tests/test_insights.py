@@ -171,7 +171,7 @@ def test_detector_a_deadline_without_block():
     assert card.agent == "memory" and card.type == "task" and card.status == "pending"
     assert card.title.startswith("Block time for") and len(card.title) <= 60
     assert "routines.md" in card.why and "no calendar block" in card.why
-    assert card.urgency == 3                       # 7.1 days out
+    assert card.urgency == 1                       # 7.1 days out (3 = most urgent)
     assert card.payload["suggestedMinutes"] == 50 and card.payload["course"] == "CS61B"
     assert card.dueAt == "2026-11-20T17:00:00-08:00"
 
@@ -186,7 +186,7 @@ def test_detector_b_prof_email_waiting_over_48h():
     r = insights.compute([waiting, fresh], KNOWLEDGE, NOW)
     [card] = r.cards
     assert card.payload["kind"] == "prof_email_waiting"
-    assert card.title == "Reply to Prof. Lee" and card.urgency == 1
+    assert card.title == "Reply to Prof. Lee" and card.urgency == 3
     assert "3 days" in card.why and "people.md" in card.why and "academic advisor" in card.why
     assert card.payload["emailId"] == "em-1"
 
@@ -227,7 +227,7 @@ def test_detector_d_skipped_8am_pattern():
     assert card.payload["kind"] == "pattern_skipped_block"
     assert card.title == "Move study from 8am to 2pm?"
     assert "skipped 3 8am blocks" in card.why and "routines.md" in card.why
-    assert card.urgency == 3 and card.payload == {"kind": "pattern_skipped_block", "skippedHour": 8, "count": 3, "suggestedHour": 14}
+    assert card.urgency == 1 and card.payload == {"kind": "pattern_skipped_block", "skippedHour": 8, "count": 3, "suggestedHour": 14}
 
 
 def test_detector_e_gentle_win():
@@ -239,7 +239,7 @@ def test_detector_e_gentle_win():
     r = insights.compute(events, KNOWLEDGE, NOW)
     [card] = r.cards
     assert card.payload["kind"] == "win" and card.payload["count"] == 2
-    assert card.title == "Nice: 2 deadlines done this week" and card.urgency == 3
+    assert card.title == "Nice: 2 deadlines done this week" and card.urgency == 1
 
 
 # ----------------------------------------------------------------------------- cards
@@ -254,7 +254,7 @@ def test_max_five_cards_sorted_by_urgency_with_one_per_detector():
     ]
     r = insights.compute(events, KNOWLEDGE, NOW)
     assert len(r.cards) == 5
-    assert [c.urgency for c in r.cards] == sorted(c.urgency for c in r.cards)
+    assert [c.urgency for c in r.cards] == sorted((c.urgency for c in r.cards), reverse=True)
     assert set(kinds(r)) == {"deadline_no_block", "prof_email_waiting", "overcommitted_day", "pattern_skipped_block", "win"}
     assert all(len(c.title) <= 60 for c in r.cards)
     assert len({c.id for c in r.cards}) == 5
@@ -348,7 +348,11 @@ def test_fixtures_validate_and_produce_demo_insights():
     assert set(knowledge) == {"README.md", "goals.md", "classes.md", "deadlines.md", "writingstyle.md", "routines.md", "people.md"}
     assert all(len(t.splitlines()) <= 60 for t in knowledge.values())
     r = insights.compute(events, knowledge, anchor.replace(hour=14, minute=30))
-    assert r.nextThing.title == "CS70 Homework 10"
+    # goals.md ("Land a summer 2027 software engineering internship") lifts the internship assessment
+    assert r.nextThing.title.startswith("Nimbus online assessment")
+    assert "goals.md" in r.nextThing.why and "routines.md" in r.nextThing.why
+    no_goals = insights.compute(events, {**knowledge, "goals.md": ""}, anchor.replace(hour=14, minute=30))
+    assert no_goals.nextThing.title == "CS70 Homework 10"
     assert set(kinds(r)) == {"deadline_no_block", "prof_email_waiting", "overcommitted_day", "pattern_skipped_block", "win"}
     assert r.cards[0].title == "Reply to Prof. Lee"
 

@@ -4,7 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { google } from "googleapis";
-import { DATA_DIR, MOCK } from "../config.js";
+import { DATA_DIR } from "../config.js";
+import { useFixtures } from "../google/status.js";
 import { getAuthedClient } from "../google/auth.js";
 import { getHeader } from "./parse.js";
 
@@ -51,13 +52,15 @@ export function buildReplyMime(opts: { to: string; subject: string; body: string
     'Content-Type: text/plain; charset="UTF-8"',
     "Content-Transfer-Encoding: base64",
   ];
-  if (opts.inReplyTo) {
-    headers.push(`In-Reply-To: ${opts.inReplyTo}`);
+  // Header values read back from Gmail can be folded across lines; a raw CR/LF here would end the header block.
+  const inReplyTo = (opts.inReplyTo ?? "").replace(/\s+/g, " ").trim();
+  if (inReplyTo) {
+    headers.push(`In-Reply-To: ${inReplyTo}`);
     const refs = (opts.references ?? "").split(/\s+/).filter(Boolean);
-    if (!refs.includes(opts.inReplyTo)) refs.push(opts.inReplyTo);
+    if (!refs.includes(inReplyTo)) refs.push(inReplyTo);
     headers.push(`References: ${refs.join(" ")}`);
   }
-  const body = Buffer.from(opts.body, "utf8").toString("base64").replace(/(.{76})/g, "$1\r\n");
+  const body = Buffer.from(opts.body, "utf8").toString("base64").replace(/(.{76})/g, "$1\r\n").replace(/\r\n$/, "");
   return `${headers.join("\r\n")}\r\n\r\n${body}\r\n`;
 }
 
@@ -81,7 +84,7 @@ function appendMockOutbox(entry: MockOutboxEntry): void {
 /** Create a reply draft in the original thread. Never sends. */
 export async function createReplyDraft(input: ReplyDraftInput): Promise<DraftResult> {
   const subject = replySubject(input.subject);
-  if (MOCK) {
+  if (useFixtures()) {
     const draftId = `mock-${randomUUID()}`;
     appendMockOutbox({ kind: "draft", draftId, at: new Date().toISOString(), ...input, subject });
     return { draftId };
@@ -119,7 +122,8 @@ export async function createReplyDraft(input: ReplyDraftInput): Promise<DraftRes
 
 /** Send an existing draft. Only called when the approved payload has autoSend === true. */
 export async function sendDraft(draftId: string): Promise<DraftResult> {
-  if (MOCK) {
+  // A draft id minted in demo mode is never sent for real, even if Google was connected in between.
+  if (useFixtures() || draftId.startsWith("mock-")) {
     appendMockOutbox({ kind: "send", draftId, at: new Date().toISOString() });
     return { draftId, messageId: `mock-sent-${randomUUID()}` };
   }

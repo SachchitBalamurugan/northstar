@@ -15,6 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import config
 import insights
 import storage
+from routes_briefing import router as briefing_router
+from routes_discover import router as discover_router
 from routes_insights import router as insights_router
 from routes_storage import router as storage_router
 
@@ -32,7 +34,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Northstar Memory", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    # Any localhost origin, plus file:// pages: the packaged Electron renderer loads from file:// and sends
+    # "Origin: null" (same rule as inbox/src/app.ts).
+    allow_origin_regex=r"^(null|file://.*|https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?)$",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -45,3 +49,5 @@ def health() -> dict:
 
 app.include_router(storage_router)
 app.include_router(insights_router)
+app.include_router(discover_router)
+app.include_router(briefing_router)

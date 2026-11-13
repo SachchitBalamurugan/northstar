@@ -33,10 +33,10 @@ Data layout: `data/events.db` (tables `events` + FTS5 `events_fts`, `proposals`,
 |---|---|---|
 | `POST /events` | `MemoryEvent` | stored event (id assigned). `preference`/`fact` kinds are also mirrored to umem in the background. |
 | `GET /events` | `?kind=&since=&limit=` | newest first |
-| `POST /context` | `{query, k?}` | `{snippets[], knowledge[], umem}`: FTS top-k events, most relevant knowledge files, `umem context` text. Trimmed to ~8000 chars (snippets dropped first). |
-| `GET /knowledge` | | all 7 files (missing ones have empty content) |
-| `GET /knowledge/{file}` · `PUT /knowledge/{file}` | `{content}` | one file; 404 for names outside the fixed list |
-| `POST /remember` | `{text, scope?, tags?}` | stores a `fact` event (source `user`) and mirrors it to umem synchronously; `{ok, event, umem: bool}` |
+| `POST /context` | `{query, k?}` | `{snippets: string[], knowledge: string[]}`: FTS top-k event texts (LIKE fallback), then `"<file>: <excerpt>"` for the most relevant knowledge files, plus a `"umem: ..."` item when umem is available. Trimmed to ~8000 chars (weakest snippets dropped first). |
+| `GET /knowledge` | | `[{name, updatedAt}]` |
+| `GET /knowledge/{file}` · `PUT /knowledge/{file}` | `{content}` | GET -> `{name, content, updatedAt}`; PUT -> `{ok:true, name}`. Only `*.md` basenames; anything else (including path traversal) is a 400. |
+| `POST /remember` | `{text, scope?, tags?}` | stores a `fact` or `preference` event (source `user`), mirrors it to umem in the background; `{ok:true, id}` |
 | `GET /proposals` | `?status=pending` | proposals (insight cards are `type: task`) |
 | `POST /proposals/{id}/approve` · `/reject` | | approving/rejecting a `task` also records a `preference` event: `user accepted: <title>` / `user declined: <title>` |
 | `GET /insights` · `POST /digest/run` | | insight engine (see `insights.py`) |

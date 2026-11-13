@@ -23,6 +23,18 @@ const api = {
   bubbleMove: (x: number, y: number) => ipcRenderer.send("ns:bubble-move", x, y),
   bubbleClick: () => ipcRenderer.send("ns:bubble-click"),
   bubbleCommand: () => ipcRenderer.send("ns:bubble-command"),
+  // Ask window (small text window under the bubble)
+  askToggle: () => ipcRenderer.send("ns:ask-toggle"),
+  askHide: () => ipcRenderer.send("ns:ask-hide"),
+  askResize: (height: number) => ipcRenderer.send("ns:ask-resize", height),
+  onAskShown: (cb: () => void) => { ipcRenderer.on("ns:ask-shown", cb); return () => ipcRenderer.removeListener("ns:ask-shown", cb); },
+  onAskBlur: (cb: () => void) => { ipcRenderer.on("ns:ask-blur", cb); return () => ipcRenderer.removeListener("ns:ask-blur", cb); },
+  // Maximize: open the main window on a given screen
+  openMain: (screen: string) => ipcRenderer.send("ns:open-main", screen),
+  onNavigate: (cb: (screen: string) => void) => {
+    const h = (_e: unknown, s: string) => cb(s);
+    ipcRenderer.on("ns:navigate", h); return () => ipcRenderer.removeListener("ns:navigate", h);
+  },
 };
 
 contextBridge.exposeInMainWorld("northstar", api);

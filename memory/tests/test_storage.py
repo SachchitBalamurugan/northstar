@@ -137,8 +137,9 @@ def test_knowledge_crud_and_allowed_list(caplog):
     assert "Prof. Lee" in knowledge.read("people.md")
     with pytest.raises(ValueError):
         knowledge.read("../secrets.md")
-    with pytest.raises(ValueError):
-        knowledge.write("notes.md", "x")
+    for bad in ("notes.txt", "sub/notes.md", "..\\x.md", ".hidden.md", ""):
+        with pytest.raises(ValueError):
+            knowledge.write(bad, "x")
     with caplog.at_level("WARNING", logger="memory.knowledge"):
         big = "\n".join(f"line {i}" for i in range(config.KNOWLEDGE_MAX_LINES + 5))
         knowledge.write("goals.md", big)
@@ -207,9 +208,12 @@ def test_events_and_context_routes(client):
     r = client.post("/context", json={"query": "Prof. Lee"})
     assert r.status_code == 200
     data = r.json()
-    assert data["snippets"][0]["text"] == body["text"]
-    assert data["knowledge"][0]["file"] == "people.md"
-    assert data["umem"] is None  # umem disabled in tests
+    assert set(data) == {"snippets", "knowledge"}            # contract: two string arrays
+    assert data["snippets"][0] == body["text"]
+    assert data["knowledge"][0].startswith("people.md: ") and "CS61 instructor" in data["knowledge"][0]
+    # natural-language query with FTS-hostile punctuation, and a partial word (LIKE fallback)
+    assert body["text"] in client.post("/context", json={"query": 'what did "Lee" ask for? (PS4) AND NOT *'}).json()["snippets"]
+    assert body["text"] in client.post("/context", json={"query": "dra"}).json()["snippets"]
     assert client.post("/events", json={"ts": "x", "agent": "bogus", "source": "gmail",
                                         "kind": "fact", "text": "t"}).status_code == 422
 
@@ -222,31 +226,39 @@ def test_context_trimming(client, monkeypatch):
     monkeypatch.setattr(umem_bridge, "_available", True)
     monkeypatch.setattr(umem_bridge, "context", lambda: "u" * 5000)
     data = client.post("/context", json={"query": "lee", "k": 20}).json()
-    total = (sum(len(s["text"]) for s in data["snippets"])
-             + sum(len(k["content"]) for k in data["knowledge"]) + len(data["umem"] or ""))
-    assert total <= 8000
-    assert data["snippets"] == []                         # snippets trimmed first
-    assert len(data["knowledge"][0]["content"]) == 8000   # umem cut before knowledge
-    assert data["umem"] is None
+    total = sum(len(s) for s in data["snippets"]) + sum(len(k) for k in data["knowledge"])
+    assert total <= 8000                                   # ~2k tokens
+    assert len(data["snippets"]) >= 1                      # weakest snippets dropped first
+    assert data["knowledge"][0].startswith("people.md: ")
+    assert any(k.startswith("umem: ") for k in data["knowledge"])
 
 
 def test_knowledge_routes(client):
-    assert [k["file"] for k in client.get("/knowledge").json()] == config.KNOWLEDGE_FILES
+    assert [k["name"] for k in client.get("/knowledge").json()] == config.KNOWLEDGE_FILES
     r = client.put("/knowledge/goals.md", json={"content": "- ship Northstar\n"})
-    assert r.status_code == 200 and r.json()["content"] == "- ship Northstar\n"
-    assert client.get("/knowledge/goals.md").json()["content"] == "- ship Northstar\n"
+    assert r.status_code == 200 and r.json() == {"ok": True, "name": "goals.md"}
+    got = client.get("/knowledge/goals.md").json()
+    assert got["name"] == "goals.md" and got["content"] == "- ship Northstar\n" and got["updatedAt"]
+    assert any(k["name"] == "goals.md" and k.get("updatedAt") for k in client.get("/knowledge").json())
     assert client.get("/knowledge/nope.md").status_code == 404
-    assert client.put("/knowledge/nope.md", json={"content": "x"}).status_code == 404
+    for bad in ("..%2Fevents.db", "..%2F..%2F.env", "%2E%2E%2Fx.md", "notes.txt", "sub%2Fx.md", "..%5Cx.md"):
+        assert client.get(f"/knowledge/{bad}").status_code == 400, bad
+        assert client.put(f"/knowledge/{bad}", json={"content": "x"}).status_code == 400, bad
+    assert not (config.DATA_DIR / "x.md").exists()
 
 
 def test_remember_route(client, monkeypatch):
     calls = []
     monkeypatch.setattr(umem_bridge, "remember", lambda text, tags, scope="global": calls.append((text, tags, scope)) or True)
     r = client.post("/remember", json={"text": "Tuesdays are lab days", "tags": ["routine"]})
-    assert r.status_code == 200 and r.json()["umem"] is True
+    assert r.status_code == 200 and r.json()["ok"] is True
     facts = storage.list_events(kind="fact")
-    assert facts[0].text == "Tuesdays are lab days" and facts[0].source == "user"
-    assert calls == [("Tuesdays are lab days", ["fact", "routine"], "global")]
+    assert facts[0].text == "Tuesdays are lab days" and facts[0].source == "user" and facts[0].id == r.json()["id"]
+    assert calls == []  # umem unavailable in tests: nothing mirrored, nothing fatal
+    r = client.post("/remember", json={"text": "I prefer studying after lunch", "scope": "global", "tags": []})
+    assert storage.list_events(kind="preference")[0].id == r.json()["id"]
+    r = client.post("/remember", json={"text": "my key is sk-abcdefghijklmnop1234567890", "tags": []})
+    assert "sk-abc" not in storage.list_events(limit=1)[0].text
 
 
 # --- umem bridge ------------------------------------------------------------
@@ -267,6 +279,20 @@ def test_umem_bridge_never_raises_when_cli_missing(monkeypatch, tmp_path, caplog
         assert umem_bridge.context() == ""
         assert umem_bridge.bootstrap_json() is None
     assert "failed" in caplog.text
+
+
+def test_umem_scope_is_project_in_mock_and_global_in_real_mode(monkeypatch):
+    """Demo (MOCK) facts must never reach the user's home-level umem store."""
+    seen = []
+    monkeypatch.setattr(config, "UMEM_ENABLED", True)
+    monkeypatch.setattr(umem_bridge, "_available", True)
+    monkeypatch.setattr(umem_bridge, "_run", lambda *a, **k: seen.append(a) or object())
+    monkeypatch.setattr(config, "MOCK", True)
+    assert umem_bridge.remember("Maya likes tea", ["fact"], "global") is True
+    assert seen[-1][seen[-1].index("--scope") + 1] == "project"
+    monkeypatch.setattr(config, "MOCK", False)
+    assert umem_bridge.remember("I like tea", ["fact"], "global") is True
+    assert seen[-1][seen[-1].index("--scope") + 1] == "global"
 
 
 def test_umem_disabled_short_circuits(monkeypatch):

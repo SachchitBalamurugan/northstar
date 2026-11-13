@@ -1,6 +1,6 @@
 // Draft a reply in the student's voice -> `send_reply` Proposal. The Gmail agent's approve handler
 // consumes payload { emailId, threadId, to, subject, body, originalBody, autoSend }.
-import { getCache, newProposal } from "../store.js";
+import { getCache, listProposals, newProposal } from "../store.js";
 import { getContext } from "../memory.js";
 import { complete } from "../llm.js";
 import type { CachedEmail, ContextResponse, Proposal, SenderRole, TriagedEmail } from "../types.js";
@@ -72,6 +72,8 @@ function answerAsk(ask: string): string {
     return `On "${a.replace(/\?$/, "")}" - yes, that works for me.`;
   }
   if (/^let me know\b/i.test(a)) return `I'll let you know ${a.replace(/^let me know\s*/i, "").replace(/[.!]$/, "")} as soon as I can.`.replace(/\s+as soon/, " as soon");
+  const confirm = /^(?:please\s+)?reply to confirm\s+(.+?)(?:\s+if\b.*)?[.!]?$/i.exec(a);
+  if (confirm) return `Confirming ${flipPronouns(confirm[1])}.`;
   const action = a.replace(/^(please|make sure to|be sure to|remember to|don't forget to)\s+/i, "").replace(/[.!]$/, "");
   const flipped = flipPronouns(action);
   return `I'll ${flipped.charAt(0).toLowerCase()}${flipped.slice(1)}.`;
@@ -85,7 +87,8 @@ export function mockDraft(email: CachedEmail, triaged: TriagedEmail, style: Writ
     .trim();
   const lines: string[] = [salutation(email, triaged.senderRole, style), ""];
   lines.push(`Thanks for the note about ${topic.charAt(0).toLowerCase()}${topic.slice(1)}.`);
-  const asks = triaged.asks.slice(0, 3);
+  // "let me know if you need X" is an offer, not something to answer
+  const asks = triaged.asks.filter((a) => !/^\s*(please\s+)?(let me know|reply here|reach out|email me) if\b/i.test(a)).slice(0, 3);
   if (asks.length) lines.push(...asks.map(answerAsk));
   else lines.push("Got it - appreciate you letting me know.");
   const due = [...triaged.deadlines].sort((a, b) => a.dueAt.localeCompare(b.dueAt))[0];
@@ -116,6 +119,9 @@ function shortName(from: string): string {
 export async function draftReply(emailId: string): Promise<Proposal> {
   const email = getCache().emails.find((e) => e.id === emailId);
   if (!email) throw new NotFoundError(`email ${emailId} not in cache`);
+  // Opening the same email twice in the UI must not queue two replies.
+  const existing = listProposals("pending").find((p) => p.type === "send_reply" && p.payload?.emailId === emailId);
+  if (existing) return existing;
 
   const ctx: ContextResponse = await getContext(`writingstyle ${email.from}`, 6);
   const style = parseWritingStyle(ctx.knowledge.find((k) => /writingstyle/i.test(k.file))?.content ?? "");

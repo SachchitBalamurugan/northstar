@@ -2,7 +2,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { calendar_v3 } from "googleapis";
-import { FIXTURES_DIR, MOCK } from "../config.js";
+import { FIXTURES_DIR } from "../config.js";
+import { ensureCacheSource, useFixtures } from "../google/status.js";
 import { loadFixture } from "../fixtures.js";
 import { getAuthedClient } from "../google/auth.js";
 import { getCache, updateCache } from "../store.js";
@@ -14,17 +15,23 @@ const SYNC_DAYS = 14;
 
 const byStart = (a: CachedEvent, b: CachedEvent) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id);
 
-/** Replace the cached events with `fresh`, keeping any Northstar-created blocks that are not in `fresh`. */
+/**
+ * Demo mode: replace the cached events with the fixture, keeping events added in this demo (ids start "mock-")
+ * and Northstar blocks, since no real calendar remembers them.
+ */
 function mergeKeepingBlocks(fresh: CachedEvent[]): CachedEvent[] {
   const ids = new Set(fresh.map((e) => e.id));
-  const kept = getCache().events.filter((e) => e.createdByNorthstar && !ids.has(e.id));
+  const kept = getCache().events.filter((e) => (e.createdByNorthstar || e.id.startsWith("mock-")) && !ids.has(e.id));
   return [...fresh, ...kept].sort(byStart);
 }
 
 export async function syncCalendar(): Promise<{ events: number }> {
-  const fresh = MOCK ? syncMock() : await syncGoogle();
+  const fixtures = useFixtures();
+  ensureCacheSource(fixtures ? "fixtures" : "google");
+  const fresh = fixtures ? syncMock() : await syncGoogle();
   if (!fresh) return { events: 0 };
-  const events = mergeKeepingBlocks(fresh);
+  // Real mode: Google Calendar is the truth, so an event the user deleted there disappears here too.
+  const events = fixtures ? mergeKeepingBlocks(fresh) : [...fresh].sort(byStart);
   updateCache({ events });
   return { events: events.length };
 }
@@ -76,7 +83,10 @@ async function syncGoogle(): Promise<CachedEvent[]> {
   const { google } = await import("googleapis"); // lazy: the full googleapis bundle is slow to load
   const calendar = google.calendar({ version: "v3", auth: await getAuthedClient() });
   const now = new Date();
-  const timeMin = now.toISOString();
+  // From the start of today, so events earlier today still show in GET /calendar/today.
+  const dayStart = new Date(now);
+  dayStart.setHours(0, 0, 0, 0);
+  const timeMin = dayStart.toISOString();
   const timeMax = new Date(now.getTime() + SYNC_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const out: CachedEvent[] = [];
   let pageToken: string | undefined;

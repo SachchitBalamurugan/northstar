@@ -4,6 +4,7 @@ import { useUI, type Screen } from "./store";
 import { checkHealth, getPendingProposals, type ServiceName } from "./api";
 import { AmbientGlow, GlassPill, LogoMark } from "./components/ui";
 import FloatingHandoff from "./components/FloatingHandoff";
+import GoogleStatus from "./components/GoogleStatus";
 import Dashboard, { AskBar } from "./screens/Dashboard";
 import Now from "./screens/Now";
 import Approve from "./screens/Approve";
@@ -12,11 +13,13 @@ import Knowledge from "./screens/Knowledge";
 import Focus from "./screens/Focus";
 import Onboarding from "./screens/Onboarding";
 import CommandBar from "./screens/CommandBar";
+import Activity from "./screens/Activity";
 
 // Dashboard sits in the center as the hero tab; two tabs on each side.
 const NAV: { id: Screen; label: string }[] = [
   { id: "now", label: "Focus" },
   { id: "approve", label: "Approve" },
+  { id: "activity", label: "Activity" },
   { id: "dashboard", label: "Dashboard" },
   { id: "workflow", label: "Workflow" },
   { id: "knowledge", label: "Knowledge" },
@@ -105,6 +108,15 @@ export default function App() {
     return () => { clearInterval(t); offCmd?.(); window.removeEventListener("keydown", onKey); };
   }, []);
 
+  // Land on a screen when asked: `ns:navigate` from Electron (Ask window → maximize), or #activity / #approve in a browser.
+  useEffect(() => {
+    const go = (s: string) => { if (NAV.some(n => n.id === s)) setScreen(s as Screen); };
+    const fromHash = () => { const h = window.location.hash.slice(1); if (h === "activity" || h === "approve") go(h); };
+    fromHash(); window.addEventListener("hashchange", fromHash);
+    const offNav = window.northstar?.onNavigate(go);
+    return () => { window.removeEventListener("hashchange", fromHash); offNav?.(); };
+  }, []);
+
   const live = Object.values(health).filter(Boolean).length;
   const dragArea = useRef<HTMLDivElement>(null);
 
@@ -120,13 +132,13 @@ export default function App() {
           <span className="display text-[24px] tracking-[-0.03em]">Northstar</span>
         </button>
 
-        <div className="absolute left-1/2 -translate-x-1/2">
+        <div className="absolute left-1/2 -translate-x-[56%]">
           <GlassPill>
             {NAV.map(({ id, label }) => id === "dashboard" ? (
               <DashboardTab key={id} active={screen === "dashboard"} onClick={() => setScreen("dashboard")} />
             ) : (
               <button key={id} onClick={() => setScreen(id)}
-                className={`relative h-10 rounded-full px-[15px] text-[14.3px] font-medium tracking-[-0.01em] transition-colors duration-200 ${screen === id ? "text-ink" : "text-muted hover:text-ink"}`}>
+                className={`relative h-10 rounded-full px-3 text-[14.3px] font-medium tracking-[-0.01em] transition-colors duration-200 ${screen === id ? "text-ink" : "text-muted hover:text-ink"}`}>
                 {screen === id && <motion.span layoutId="nav-pill" transition={{ duration: 0.3, ease: "easeOut" }} className="absolute inset-0 rounded-full bg-white/10" />}
                 <span className="relative flex items-center gap-2">
                   {label}
@@ -140,6 +152,7 @@ export default function App() {
         </div>
 
         <div className="ml-auto flex items-center gap-4">
+          <GoogleStatus />
           <span title={`${live}/3 services live. Offline services use demo data.`} className="no-drag flex items-center gap-1.5">
             {(Object.keys(health) as ServiceName[]).map(s => (
               <span key={s} title={`${s}: ${health[s] ? "live" : "demo data"}`} className={`h-1.5 w-1.5 rounded-full ${health[s] ? "bg-emerald-400 shadow-[0_0_8px_#34d399]" : "bg-white/20"}`} />
@@ -154,6 +167,7 @@ export default function App() {
             className="mx-auto max-w-[1120px] px-10 pt-10 pb-24">
             {screen === "dashboard" && <Dashboard />}
             {screen === "now" && <Now />}
+            {screen === "activity" && <Activity />}
             {screen === "approve" && <Approve />}
             {screen === "workflow" && <Workflow />}
             {screen === "knowledge" && <Knowledge />}

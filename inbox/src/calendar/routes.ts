@@ -4,8 +4,12 @@ import type { FastifyInstance } from "fastify";
 import { AUTO_APPROVE_CALENDAR } from "../config.js";
 import { contextToText, getContext } from "../memory.js";
 import { approveProposal, registerApproveHandler } from "../proposals.js";
-import { dropPending, getCache, newProposal } from "../store.js";
+import { dropPending, getCache, newProposal, updateCache } from "../store.js";
+import { getAuthedClient } from "../google/auth.js";
+import { useFixtures } from "../google/status.js";
 import type { CachedEvent, Deadline, Proposal } from "../types.js";
+import { toCalEvent } from "../types.js";
+import { BadCandidate, addCandidate, suggestEvents } from "./agent.js";
 import { createCalendarEvent, fmtDateTime } from "./create.js";
 import { addDays, atHour, dayKey, eventInterval, freeSlots, minutesBetween, startOfDay } from "./freebusy.js";
 import { DAY_END_HOUR, DAY_START_HOUR, DEFAULT_FOCUS_WINDOW, type FocusWindow, type PlannedBlock, parseFocusWindow, planBlocks } from "./planner.js";
@@ -100,7 +104,67 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/calendar/today", async () => {
     const now = new Date();
-    return { date: dayKey(now), events: eventsOnDay(getCache().events, now) };
+    return eventsOnDay(getCache().events, now).map(toCalEvent); // contract: CalEvent[] (app/src/renderer/src/api.ts getToday)
+  });
+
+  // ?from=ISO&to=ISO (any window up to ~6 weeks, for day/week/month views) or ?days=N from today.
+  app.get<{ Querystring: { days?: string; from?: string; to?: string } }>("/calendar/range", async (req) => {
+    let from: Date, to: Date;
+    if (req.query.from && req.query.to && !Number.isNaN(Date.parse(req.query.from)) && !Number.isNaN(Date.parse(req.query.to))) {
+      from = new Date(req.query.from); to = new Date(req.query.to);
+      if (+to - +from > 45 * 864e5) to = new Date(+from + 45 * 864e5);
+    } else {
+      const days = Math.min(45, Math.max(1, Number(req.query.days ?? 7) || 7));
+      from = startOfDay(new Date()); to = addDays(from, days);
+    }
+    const events = getCache().events
+      .filter((ev) => { const iv = eventInterval(ev); return iv && iv.start < to && iv.end > from; })
+      .sort((a, b) => a.start.localeCompare(b.start))
+      .map((ev) => ({ ...ev, ...toCalEvent(ev) })); // CalEvent plus location / description / allDay
+    return { from: from.toISOString(), to: to.toISOString(), events };
+  });
+
+  // Edit (move / rename / retime) an event the user changed in the calendar UI. The user's own edit is the approval.
+  type EventPatch = { title?: string; start?: string; end?: string; location?: string; details?: string };
+  app.patch<{ Params: { id: string }; Body: EventPatch | null }>("/calendar/events/:id", async (req, reply) => {
+    const id = req.params.id, b = req.body ?? {};
+    const cur = getCache().events.find((e) => e.id === id);
+    if (!cur) return reply.code(404).send({ error: "unknown event" });
+    const next: CachedEvent = { ...cur, title: b.title ?? cur.title, start: b.start ?? cur.start, end: b.end ?? cur.end,
+      location: b.location ?? cur.location, description: b.details ?? cur.description };
+    if (Number.isNaN(Date.parse(next.start)) || Number.isNaN(Date.parse(next.end)) || Date.parse(next.end) <= Date.parse(next.start)) {
+      return reply.code(400).send({ error: "end must be after start" });
+    }
+    if (!useFixtures() && !id.startsWith("mock-")) {
+      try {
+        const { google } = await import("googleapis");
+        const calendar = google.calendar({ version: "v3", auth: await getAuthedClient() });
+        await calendar.events.patch({ calendarId: "primary", eventId: id, requestBody: {
+          summary: next.title, location: next.location, description: next.description,
+          start: { dateTime: next.start }, end: { dateTime: next.end } } });
+      } catch (err) {
+        return reply.code(502).send({ error: (err as Error).message });
+      }
+    }
+    updateCache({ events: getCache().events.map((e) => (e.id === id ? next : e)).sort((a, c) => a.start.localeCompare(c.start)) });
+    return { ok: true, event: { ...next, ...toCalEvent(next) } };
+  });
+
+  // Delete an event (the UI asks the user to confirm first).
+  app.delete<{ Params: { id: string } }>("/calendar/events/:id", async (req, reply) => {
+    const id = req.params.id;
+    if (!getCache().events.some((e) => e.id === id)) return reply.code(404).send({ error: "unknown event" });
+    if (!useFixtures() && !id.startsWith("mock-")) {
+      try {
+        const { google } = await import("googleapis");
+        const calendar = google.calendar({ version: "v3", auth: await getAuthedClient() });
+        await calendar.events.delete({ calendarId: "primary", eventId: id });
+      } catch (err) {
+        return reply.code(502).send({ error: (err as Error).message });
+      }
+    }
+    updateCache({ events: getCache().events.filter((e) => e.id !== id) });
+    return { ok: true };
   });
 
   app.get<{ Querystring: { days?: string } }>("/calendar/free", async (req) => {
@@ -117,6 +181,24 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
       }
     }
     return { from: dayKey(now), days, slots };
+  });
+
+  // "Add to calendar" box. Suggest only reads; nothing is added until the user picks one.
+  app.post<{ Body: { query?: unknown } | null }>("/calendar/suggest", async (req, reply) => {
+    const query = req.body?.query;
+    if (typeof query !== "string" || !query.trim()) return reply.code(400).send({ error: "query is required" });
+    return suggestEvents(query.trim().slice(0, 500));
+  });
+
+  // Called only after the user clicked Add on a candidate: that click is the approval.
+  app.post<{ Body: { candidate?: unknown } | null }>("/calendar/add", async (req, reply) => {
+    try {
+      return await addCandidate(req.body?.candidate);
+    } catch (err) {
+      const bad = err instanceof BadCandidate;
+      // A non-2xx makes the UI fall back to a prefilled Google Calendar page, so the user is never stuck.
+      return reply.code(bad ? 400 : 502).send({ ok: false, error: (err as Error).message });
+    }
   });
 
   app.post("/schedule/plan", async (_req, reply) => {

@@ -80,7 +80,9 @@ export function decodeBody(payload: MessagePartLike | null | undefined): string 
 
 // ---- quoted replies ----
 const QUOTE_HEADERS: RegExp[] = [
-  /^On .{0,200}?(\n.{0,200}?)?wrote:[ \t]*$/m,          // Gmail / Apple Mail, possibly wrapped onto 2 lines
+  // Gmail / Apple Mail attribution, possibly wrapped onto 2 lines. It always carries a date or an address,
+  // so require a digit or "@" (otherwise "On Friday we met.\nShe wrote:" would cut the whole body).
+  /^On (?=[^\n]{0,200}(?:\n[^\n]{0,200})?wrote:[ \t]*$)(?=[^\n]*(?:\n[^\n]*)?[\d@]).{0,200}?(\n.{0,200}?)?wrote:[ \t]*$/m,
   /^-{2,}\s*Original Message\s*-{2,}[ \t]*$/im,          // Outlook
   /^-{2,}\s*Forwarded message\s*-{2,}[ \t]*$/im,         // Gmail forward
   /^_{10,}[ \t]*\n\s*From: /m,                           // Outlook separator + header block
@@ -123,14 +125,25 @@ export function isSignOffLine(line: string): boolean {
   return false;
 }
 
-/** Cut at the "-- " delimiter, or at a sign-off line within the last ~8 lines. */
+/** Lines after a sign-off that look like a name/title/contact block rather than message content. */
+function isSignatureTail(lines: string[]): boolean {
+  const rest = lines.map((l) => l.trim()).filter(Boolean);
+  if (rest.length > 5) return false;
+  // A question, or a full sentence, after "Thanks!" is content ("Thanks!\nIs it due Friday or Monday?").
+  return rest.every((l) => {
+    const words = l.split(/\s+/).length;
+    return l.length <= 60 && words <= 8 && !l.includes("?") && !(words >= 5 && /[.!]$/.test(l));
+  });
+}
+
+/** Cut at the "-- " delimiter, or at a sign-off line within the last ~8 lines that is followed only by a signature. */
 export function stripSignature(text: string): string {
   const original = normalizeNewlines(text ?? "").trim();
   const lines = original.split("\n");
   const delim = lines.findIndex((l) => /^--\s?$/.test(l));
   let cutAt = delim >= 0 ? delim : lines.length;
   for (let i = Math.max(0, cutAt - 8); i < cutAt; i++) {
-    if (isSignOffLine(lines[i])) {
+    if (isSignOffLine(lines[i]) && isSignatureTail(lines.slice(i + 1, cutAt))) {
       cutAt = i;
       break;
     }

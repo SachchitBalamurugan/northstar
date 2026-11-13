@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime
 from pathlib import Path
 
 import config
@@ -17,10 +18,37 @@ _STOPWORDS = {
 }
 
 
+_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]*\.md$")
+
+
+def valid_name(file: str) -> bool:
+    """Only plain `*.md` basenames: no slashes, no dots-dots, no hidden files."""
+    return bool(_NAME_RE.match(file or ""))
+
+
 def _path(file: str) -> Path:
-    if file not in config.KNOWLEDGE_FILES:
-        raise ValueError(f"unknown knowledge file {file!r}; allowed: {config.KNOWLEDGE_FILES}")
+    if not valid_name(file):
+        raise ValueError(f"invalid knowledge file name {file!r}; only *.md basenames are allowed")
     return config.KNOWLEDGE_DIR / file
+
+
+def exists(file: str) -> bool:
+    return _path(file).is_file()
+
+
+def updated_at(file: str) -> str | None:
+    """ISO mtime of a file, None when it does not exist yet."""
+    p = _path(file)
+    if not p.is_file():
+        return None
+    return datetime.fromtimestamp(p.stat().st_mtime).astimezone().isoformat(timespec="seconds")
+
+
+def names() -> list[str]:
+    """The 7 standard files first, then any extra *.md the user added."""
+    extra = sorted(p.name for p in config.KNOWLEDGE_DIR.glob("*.md")
+                   if p.name not in config.KNOWLEDGE_FILES and valid_name(p.name))
+    return [*config.KNOWLEDGE_FILES, *extra]
 
 
 def read(file: str) -> str:
@@ -31,6 +59,9 @@ def read(file: str) -> str:
 
 def write(file: str, content: str) -> models.KnowledgeFile:
     p = _path(file)
+    import umem_bridge
+
+    content = umem_bridge.redact(content)  # never store secrets
     lines = content.count("\n") + (0 if content.endswith("\n") or not content else 1)
     if lines > config.KNOWLEDGE_MAX_LINES:
         log.warning("%s is %d lines (max %d); keeping it but it should be trimmed",
@@ -41,7 +72,7 @@ def write(file: str, content: str) -> models.KnowledgeFile:
 
 
 def list_files() -> list[models.KnowledgeFile]:
-    return [models.KnowledgeFile(file=f, content=read(f)) for f in config.KNOWLEDGE_FILES]
+    return [models.KnowledgeFile(file=f, content=read(f)) for f in names()]
 
 
 def _tokens(text: str) -> list[str]:
@@ -71,3 +102,12 @@ def relevant(query: str, n: int = 3) -> list[models.KnowledgeFile]:
     if not out:
         out = [models.KnowledgeFile(file="README.md", content=read("README.md"))]
     return out
+
+
+def excerpt(kf: models.KnowledgeFile, query: str, max_chars: int = 1500) -> str:
+    """'<file>: <content excerpt>' for /context: lines that match the query first, then the rest."""
+    q = set(_tokens(query))
+    lines = [l.strip() for l in kf.content.splitlines() if l.strip()]
+    hits = [l for l in lines if q & set(_tokens(l))]
+    rest = [l for l in lines if l not in hits]
+    return f"{kf.file}: " + "\n".join(hits + rest)[:max_chars]

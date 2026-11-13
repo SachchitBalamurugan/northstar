@@ -188,9 +188,83 @@ describe("planBlocks", () => {
     expect(blocks.slice(0, -1).every((b) => !b.partial)).toBe(true);
   });
 
-  it("still places (partial) blocks before a deadline that is less than 24h away", () => {
-    const blocks = plan([dl("Financial aid form", local(16, 20), 50)]);
-    expect(blocks.map((b) => [hm(b.start), hm(b.end), b.partial])).toEqual([["16 14:00", "16 14:50", true]]);
+  it("never places a block inside the 24h margin, even when the deadline is less than 24h away", () => {
+    // Due tonight: the cutoff (yesterday 20:00) is already past, so nothing is planned.
+    expect(plan([dl("Financial aid form", local(16, 20), 50)])).toEqual([]);
+    // Due tomorrow 10:30 → cutoff is today 10:30; only a 30-min block fits (now is 10:00), flagged partial.
+    const blocks = plan([dl("Problem set", local(17, 10, 30), 120)]);
+    expect(blocks.map((b) => [hm(b.start), hm(b.end), b.partial])).toEqual([["16 10:00", "16 10:30", true]]);
+    for (const b of blocks) expect(new Date(b.dueAt).getTime() - new Date(b.end).getTime()).toBeGreaterThanOrEqual(24 * 60 * 60_000);
+  });
+
+  it("widens beyond the focus window only for the part that cannot fit in it", () => {
+    // Cutoff Tue 18:00 → two focus windows (Mon + Tue, 3 blocks each = 300 min). 400 min needs 100 min elsewhere.
+    const blocks = plan([dl("Thesis chapter", local(18, 18), 400)]);
+    expect(blocks.reduce((s, b) => s + b.minutes, 0)).toBe(400);
+    const inFocus = (b: PlannedBlock) => new Date(b.start).getHours() >= 14 && new Date(b.end).getHours() * 60 + new Date(b.end).getMinutes() <= 17 * 60;
+    expect(blocks.filter(inFocus).reduce((s, b) => s + b.minutes, 0)).toBe(300);
+    expect(blocks.filter((b) => !inFocus(b)).reduce((s, b) => s + b.minutes, 0)).toBe(100);
+    assertInvariants(blocks);
+    // With a later due date the same effort stays entirely inside 14:00-17:00.
+    const roomy = plan([dl("Thesis chapter", local(25, 18), 400)]);
+    expect(roomy.every(inFocus)).toBe(true);
+    assertInvariants(roomy);
+  });
+
+  it("uses the default 14:00-17:00 window when the focus window is missing or invalid", () => {
+    for (const fw of [undefined, { startHour: 17, endHour: 14 }, { startHour: NaN, endHour: 3 }]) {
+      const blocks = planBlocks({ deadlines: [dl("Reading", local(20, 17), 50)], events: [], now: NOW, focusWindow: fw as never });
+      expect(blocks.map((b) => [hm(b.start), hm(b.end)])).toEqual([["16 14:00", "16 14:50"]]);
+    }
+  });
+
+  it("blocks of different deadlines never overlap each other or existing events", () => {
+    const events = [ev("class", local(16, 14, 30), local(16, 15, 30)), ev("gym", local(17, 14), local(17, 15))];
+    const blocks = plan([dl("Essay", local(19, 17), 150), dl("Lab report", local(19, 18), 150), dl("Quiz prep", local(20, 9), 100)], events);
+    expect(blocks.reduce((s, b) => s + b.minutes, 0)).toBe(400);
+    const spans = [
+      ...blocks.map((b) => [new Date(b.start).getTime(), new Date(b.end).getTime()]),
+      ...events.map((e) => [new Date(e.start).getTime(), new Date(e.end).getTime()]),
+    ];
+    for (let i = 0; i < spans.length; i++)
+      for (let j = i + 1; j < spans.length; j++) expect(spans[i][0] >= spans[j][1] || spans[j][0] >= spans[i][1]).toBe(true);
+    assertInvariants(blocks, events);
+  });
+
+  it("caps a day at 6h even across several deadlines, and no block ends after 23:00", () => {
+    const wide = { startHour: 9, endHour: 23 };
+    const blocks = plan([dl("A", local(25, 17), 300), dl("B", local(25, 18), 300), dl("C", local(25, 19), 300)], [], NOW, wide);
+    expect(blocks.reduce((s, b) => s + b.minutes, 0)).toBe(900);
+    const perDay = new Map<number, number>();
+    for (const b of blocks) perDay.set(new Date(b.start).getDate(), (perDay.get(new Date(b.start).getDate()) ?? 0) + b.minutes);
+    // 7 x 50 = 350 per day: the 10 minutes left under the cap are below the 15-min minimum block.
+    expect([...perDay.values()]).toEqual([350, 350, 200]);
+    assertInvariants(blocks);
+    // Late focus window with a lot of work: the last block of each day stops at or before 23:00.
+    const late = plan([dl("Night owl project", local(25, 17), 400)], [], NOW, { startHour: 21, endHour: 24 });
+    for (const b of late) expect(new Date(b.end).getHours() * 60 + new Date(b.end).getMinutes()).toBeLessThanOrEqual(23 * 60);
+    expect(late.filter((b) => new Date(b.start).getHours() >= 21).length).toBeGreaterThan(0);
+    assertInvariants(late);
+  });
+
+  it("is deterministic and does not mutate its input", () => {
+    const events = [ev("class", local(16, 14, 30), local(16, 15, 30))];
+    const deadlines = [dl("Essay", local(19, 17), 150), dl("Algebra", local(19, 17), 70)];
+    const snapshot = JSON.stringify({ events, deadlines });
+    const first = plan(deadlines, events);
+    expect(plan(deadlines, events)).toEqual(first);
+    expect(plan([...deadlines].reverse(), [...events].reverse())).toEqual(first); // input order does not matter
+    expect(JSON.stringify({ events, deadlines })).toBe(snapshot);
+    expect(first.every((b) => b.title.startsWith("◎ "))).toBe(true);
+  });
+
+  it("an unrelated short ◎ block does not suppress a deadline that merely contains its words", () => {
+    const events = [ev("blk", local(17, 14), local(17, 14, 50), { title: "◎ Lab", createdByNorthstar: true })];
+    expect(hasExistingBlock(dl("Collaboration essay", local(20, 17), 60), events)).toBe(false);
+    // A truncated block title still matches the long deadline it was made for.
+    const long = "Write the comparative literature essay on magical realism in Latin America";
+    const truncated = [ev("blk", local(17, 14), local(17, 14, 50), { title: blockTitle(long), createdByNorthstar: true })];
+    expect(hasExistingBlock(dl(long, local(20, 17), 60), truncated)).toBe(true);
   });
 
   it("skips deadlines that already have a ◎ block (by title or description), and skips past-due ones", () => {
@@ -371,9 +445,9 @@ describe("calendar routes (MOCK)", () => {
 
     // Visible in /calendar/today if it landed today.
     const today = await app.inject({ method: "GET", url: "/calendar/today" });
-    expect(today.json().date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(Array.isArray(today.json())).toBe(true);
     if (new Date(created.start).toDateString() === new Date().toDateString()) {
-      expect(today.json().events.map((x: CachedEvent) => x.id)).toContain(created.id);
+      expect(today.json().map((x: CachedEvent) => x.id)).toContain(created.id);
     }
 
     // A second plan now skips that deadline because a ◎ block exists.
@@ -390,5 +464,24 @@ describe("calendar routes (MOCK)", () => {
       expect(s.minutes).toBeGreaterThanOrEqual(15);
       expect(new Date(s.start).getHours()).toBeGreaterThanOrEqual(9);
     }
+  });
+});
+
+describe("normalizeGoogleEvent (pure mapping of Google Calendar events)", () => {
+  it("maps timed, all-day, cancelled and Northstar events", async () => {
+    const { normalizeGoogleEvent } = await import("../src/calendar/sync.js");
+    const timed = normalizeGoogleEvent({ id: "e1", summary: "CS lecture", start: { dateTime: "2026-11-16T10:00:00-08:00" }, end: { dateTime: "2026-11-16T11:00:00-08:00" } });
+    expect(timed).toEqual({ id: "e1", title: "CS lecture", start: "2026-11-16T18:00:00.000Z", end: "2026-11-16T19:00:00.000Z" });
+    // All-day dates are local days (not UTC midnight), so they block the right calendar day.
+    const allDay = normalizeGoogleEvent({ id: "e2", summary: "Career fair", start: { date: "2026-11-17" }, end: { date: "2026-11-18" } })!;
+    expect(allDay.allDay).toBe(true);
+    expect(new Date(allDay.start).getTime()).toBe(new Date(2026, 10, 17).getTime());
+    expect(new Date(allDay.end).getTime()).toBe(new Date(2026, 10, 18).getTime());
+    expect(normalizeGoogleEvent({ id: "e3", status: "cancelled", start: { dateTime: "2026-11-16T10:00:00Z" }, end: { dateTime: "2026-11-16T11:00:00Z" } })).toBeUndefined();
+    expect(normalizeGoogleEvent({ summary: "no id" })).toBeUndefined();
+    const range = { start: { dateTime: "2026-11-16T22:00:00Z" }, end: { dateTime: "2026-11-16T22:50:00Z" } };
+    expect(normalizeGoogleEvent({ id: "b1", summary: "◎ Essay", ...range })?.createdByNorthstar).toBe(true);
+    expect(normalizeGoogleEvent({ id: "b2", summary: "Renamed", extendedProperties: { private: { northstar: "1" } }, ...range })?.createdByNorthstar).toBe(true);
+    expect(normalizeGoogleEvent({ id: "b3", summary: "Dentist", ...range })?.createdByNorthstar).toBeUndefined();
   });
 });

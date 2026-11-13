@@ -251,7 +251,7 @@ describe("runTriage", () => {
     expect(bb).toBeDefined();
     expect(bb.title).toBe("Unsubscribe from Blue Bottle Coffee");
     expect(bb.why).toContain("2 unopened");
-    expect(bb.urgency).toBe(3);
+    expect(bb.urgency).toBe(1); // wire scale: 1 = least urgent
     expect(bb.payload.url).toMatch(/^https:\/\/news\.bluebottlecoffee\.com\/unsubscribe/);
     expect(bb.payload.emailIds.sort()).toEqual(["m002", "m014"]);
     // the newsletter she does open is never proposed
@@ -328,7 +328,7 @@ describe("routes", () => {
     const r = await app.inject({ method: "POST", url: "/draft", payload: { emailId: "m001" } });
     const p = r.json() as Proposal;
     expect(p.dueAt).toMatch(ISO);
-    expect(p.urgency).toBe(1);
+    expect(p.urgency).toBe(3); // wire scale: 3 = most urgent
     expect(p.payload.body).toContain("Prof. Lee");
     const missing = await app.inject({ method: "POST", url: "/draft", payload: { emailId: "nope" } });
     expect(missing.statusCode).toBe(404);

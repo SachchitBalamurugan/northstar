@@ -9,6 +9,8 @@ import { Heading, Eyebrow, GlowCard, PrimaryButton, SecondaryButton, Window, Chi
 import { useUI } from "@/store";
 import { approve, draftReply } from "@/api";
 import { loadDashboard, type DashboardData, type Priority, type PriorityKind } from "@/priorities";
+import Briefing from "@/components/Briefing";
+import ResumeWork from "@/components/ResumeWork";
 
 const ICON: Record<PriorityKind, typeof Mail> = { focus: Target, email: Mail, calendar: CalendarPlus, application: FileText, task: Sparkles };
 const LABEL: Record<PriorityKind, string> = { focus: "Focus", email: "Email", calendar: "Calendar", application: "Application", task: "Suggestion" };
@@ -87,6 +89,8 @@ export default function Dashboard() {
               )}
             </AnimatePresence>
 
+            <ResumeWork />
+
             {rest.length > 0 && (
               <Window title="Up next" icon={<Sparkles size={15} />} tag="RANKED BY NORTHSTAR" meta={`${rest.length} more`}>
                 <ul>
@@ -114,6 +118,8 @@ export default function Dashboard() {
                 </ul>
               </Window>
             )}
+
+            <Briefing />
           </div>
 
           {/* Right: today + calendar suggestions + quiet counts */}

@@ -8,8 +8,7 @@
 //   - The last block must end >= 24 h before dueAt. Nearest deadline first. Start no earlier than `now`
 //     rounded up to the next 10 min.
 //   - If a deadline can't be fully placed, place what fits and flag `partial: true` on its last block.
-//   - Fallback: when *nothing* fits with the 24 h margin (deadline is < ~1 day away), blocks are placed
-//     before dueAt instead and flagged partial, so a near deadline still gets time rather than silence.
+//   - The 24 h margin is a hard rule: a deadline less than ~1 day away gets no blocks (never one inside the margin).
 import type { CachedEvent, Deadline } from "../types.js";
 import {
   type Interval,
@@ -77,9 +76,11 @@ export function hasExistingBlock(deadline: Deadline, events: CachedEvent[]): boo
     if (!ev.createdByNorthstar) return false;
     const title = norm(ev.title);
     const desc = norm(ev.description);
-    // Titles may be truncated to fit 60 chars, so match either direction.
+    // Block titles are truncated ("…") to fit 60 chars; only then may the title be a prefix of the deadline.
+    // (A plain substring match made "◎ Lab" suppress "Collaboration essay".)
+    const truncated = /…\s*$/u.test(ev.title ?? "");
     return (
-      (title.length >= 3 && (title.includes(target) || target.includes(title))) ||
+      (title.length >= 3 && (title.includes(target) || (truncated && target.startsWith(title)))) ||
       (desc.length > 0 && desc.includes(target))
     );
   });
@@ -194,13 +195,8 @@ export function planBlocks(input: PlanInput): PlannedBlock[] {
   const out: PlannedBlock[] = [];
   for (const dl of todo) {
     const due = new Date(dl.dueAt);
-    let placed = place(dl, new Date(due.getTime() - LEAD_TIME_MS));
-    if (placed.length === 0) {
-      // Nothing fits with a 24 h margin (deadline is within ~1 day): squeeze in what we can before it's due.
-      placed = place(dl, due);
-      if (placed.length) placed[placed.length - 1].partial = true;
-    }
-    out.push(...placed);
+    // Hard rule: every block ends >= 24 h before dueAt. A deadline closer than that gets no block.
+    out.push(...place(dl, new Date(due.getTime() - LEAD_TIME_MS)));
   }
   return out.sort((a, b) => a.start.localeCompare(b.start) || a.title.localeCompare(b.title));
 }

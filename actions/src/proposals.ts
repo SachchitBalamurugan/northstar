@@ -51,7 +51,20 @@ export function updateProposal(id: string, patch: Partial<Proposal>): Proposal |
   const next = { ...cur, ...patch, id: cur.id };
   store.set(id, next);
   persist();
+  if (next.status !== cur.status && (next.status === "done" || next.status === "failed" || next.status === "rejected"))
+    for (const l of settledListeners)
+      try {
+        l(next);
+      } catch {
+        /* a listener must never break the proposal flow */
+      }
   return next;
+}
+
+/** Called once a proposal reaches "done", "failed" or "rejected" (used by the run registry). */
+const settledListeners: Array<(p: Proposal) => void> = [];
+export function onProposalSettled(listener: (p: Proposal) => void) {
+  settledListeners.push(listener);
 }
 
 /**

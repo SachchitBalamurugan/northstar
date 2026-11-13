@@ -158,6 +158,76 @@ function createBubble() {
   bubble.on("closed", () => { bubble = null; });
 }
 
+// ---------- Ask window (small text window anchored under the bubble) ----------
+let ask: BrowserWindow | null = null;
+const ASK_W = 520, ASK_MIN_H = 60, ASK_MAX_H = 340;
+let askH = 76;
+const MAIN_SCREENS = ["dashboard", "now", "activity", "approve", "inbox", "knowledge"];
+
+function placeAsk() {
+  if (!ask || ask.isDestroyed()) return;
+  const b = bubble && !bubble.isDestroyed() ? bubble.getBounds() : null;
+  const wa = (b ? screen.getDisplayMatching(b) : screen.getPrimaryDisplay()).workArea;
+  const anchor = b ?? { x: wa.x + wa.width / 2 - BUBBLE / 2, y: wa.y + 10, width: BUBBLE, height: BUBBLE };
+  let x = Math.round(anchor.x + anchor.width / 2 - ASK_W / 2);
+  x = Math.max(wa.x + 8, Math.min(x, wa.x + wa.width - ASK_W - 8));
+  let y = anchor.y + anchor.height - 6;
+  // Not enough room below the bubble: sit above it instead (and grow upward).
+  if (y + ASK_MAX_H > wa.y + wa.height - 8) y = anchor.y - askH + 6;
+  y = Math.max(wa.y + 8, y);
+  ask.setBounds({ x, y: Math.round(y), width: ASK_W, height: askH });
+}
+
+function createAsk() {
+  ask = new BrowserWindow({
+    width: ASK_W, height: askH, show: false,
+    frame: false, transparent: true, backgroundColor: "#00000000", hasShadow: false,
+    resizable: false, maximizable: false, minimizable: false, fullscreenable: false,
+    skipTaskbar: true, alwaysOnTop: true, focusable: true,
+    webPreferences: { preload: join(__dirname, "../preload/index.js"), sandbox: false, backgroundThrottling: false },
+  });
+  ask.setAlwaysOnTop(true, "floating"); // above normal windows, below the bubble, still takes keyboard focus
+  ask.setVisibleOnAllWorkspaces(true);
+  ask.webContents.setWindowOpenHandler(({ url }) => { openSafe(url); return { action: "deny" }; });
+  const url = rendererUrl("#ask");
+  if (url) ask.loadURL(url);
+  else ask.loadFile(join(__dirname, "../renderer/index.html"), { hash: "ask" });
+  // Losing focus hides it, unless the click went to the bubble (its own click toggles) or a task is running
+  // (the renderer decides: it only hides when idle).
+  ask.on("blur", () => {
+    setTimeout(() => {
+      if (!ask || ask.isDestroyed() || !ask.isVisible()) return;
+      if (bubble && !bubble.isDestroyed() && bubble.isFocused()) return;
+      ask.webContents.send("ns:ask-blur");
+    }, 80);
+  });
+  ask.on("closed", () => { ask = null; });
+}
+
+function showAsk() {
+  if (!ask || ask.isDestroyed()) createAsk();
+  const a = ask!;
+  const reveal = () => { if (a.isDestroyed()) return; placeAsk(); a.show(); a.focus(); a.webContents.send("ns:ask-shown"); };
+  if (a.webContents.isLoading()) a.webContents.once("did-finish-load", reveal);
+  else reveal();
+}
+function hideAsk() { if (ask && !ask.isDestroyed() && ask.isVisible()) ask.hide(); }
+function toggleAsk() {
+  if (ask && !ask.isDestroyed() && ask.isVisible()) hideAsk();
+  else showAsk();
+}
+
+/** Maximize: show the main window and tell its renderer which screen to land on. */
+function openMain(name: unknown) {
+  const target = MAIN_SCREENS.includes(String(name)) ? String(name) : "activity";
+  hideAsk();
+  showWindow();
+  const w = win;
+  if (!w) return;
+  if (w.webContents.isLoading()) w.webContents.once("did-finish-load", () => w.webContents.send("ns:navigate", target));
+  else w.webContents.send("ns:navigate", target);
+}
+
 function toggleMain() {
   if (win && !win.isDestroyed() && win.isVisible() && !win.isMinimized() && !hiding) hideWindow();
   else showWindow();
@@ -212,13 +282,23 @@ function registerIpc() {
     if (!bubble || bubble.isDestroyed()) return;
     const nx = Math.round(Number(x)), ny = Math.round(Number(y));
     if (Number.isFinite(nx) && Number.isFinite(ny)) bubble.setBounds({ x: nx, y: ny, width: BUBBLE, height: BUBBLE });
+    if (ask && !ask.isDestroyed() && ask.isVisible()) placeAsk(); // the Ask window follows the bubble
   });
-  ipcMain.on("ns:bubble-click", () => toggleMain());
+  ipcMain.on("ns:bubble-click", () => toggleAsk());
+  ipcMain.on("ns:ask-toggle", () => toggleAsk());
+  ipcMain.on("ns:ask-hide", () => hideAsk());
+  ipcMain.on("ns:ask-resize", (_e, h: unknown) => {
+    const n = Math.round(Number(h));
+    if (!Number.isFinite(n)) return;
+    askH = Math.max(ASK_MIN_H, Math.min(ASK_MAX_H, n));
+    if (ask && !ask.isDestroyed()) placeAsk();
+  });
+  ipcMain.on("ns:open-main", (_e, name: unknown) => openMain(name));
   ipcMain.on("ns:popped-out", () => finishHide());
   ipcMain.on("ns:win-close", () => hideWindow());
   ipcMain.on("ns:win-min", () => hideWindow());
   ipcMain.on("ns:win-max", () => { if (!win) return; win.isMaximized() ? win.unmaximize() : win.maximize(); });
-  ipcMain.on("ns:bubble-command", () => send("ns:command-bar"));
+  ipcMain.on("ns:bubble-command", () => showAsk());
 }
 
 // ---------- lifecycle ----------
@@ -233,7 +313,7 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     createBubble();
     createTray();
-    globalShortcut.register("Control+Space", () => send("ns:command-bar"));
+    globalShortcut.register("Control+Space", () => toggleAsk());
     globalShortcut.register("Control+Shift+D", () => send("ns:draft"));
   });
 

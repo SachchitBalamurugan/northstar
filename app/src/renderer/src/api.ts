@@ -1,6 +1,7 @@
 // One typed client per service. Every call falls back to mocks if the service is down.
 import type { Insights, Proposal, Triage, CalEvent, KnowledgeFile, SidekickStep, Email } from "@contracts/types";
-import { mockInsights, mockProposals, mockTriage, mockToday, mockKnowledge } from "./mocks";
+import { mockInsights, mockProposals, mockTriage, mockToday, mockKnowledge, mockRuns, mockWeek } from "./mocks";
+import type { Run } from "./local-types";
 
 export const SERVICES = { memory: "http://127.0.0.1:7701", inbox: "http://127.0.0.1:7702", actions: "http://127.0.0.1:7703" } as const;
 export type ServiceName = keyof typeof SERVICES;
@@ -30,12 +31,11 @@ export async function checkHealth(): Promise<Record<ServiceName, boolean>> {
 }
 
 // ---------- adapters: backend shapes → UI shapes ----------
-// Machines 2 & 3 use urgency 1 = MOST urgent; the UI and the actions service use 3 = most urgent. Normalize here.
+// memory and inbox already serve urgency on the contract scale (3 = most urgent), so it is not flipped here.
 function normProposal(p: Proposal): Proposal {
-  const flip = p.agent === "inbox" || p.agent === "memory";
   const payload = p.payload && p.type === "create_event" && p.payload.block && !p.payload.start
     ? { ...p.payload, start: p.payload.block.start, end: p.payload.block.end } : p.payload;
-  return { ...p, urgency: (flip ? 4 - p.urgency : p.urgency) as 1 | 2 | 3, payload, dueAt: p.dueAt ?? undefined };
+  return { ...p, payload, dueAt: p.dueAt ?? undefined };
 }
 type BackendEmail = { emailId: string; from: string; senderRole?: string; subject: string; snippet: string; receivedAt: string; deadlines?: { dueAt: string }[] };
 function normEmail(e: any): Email {
@@ -109,7 +109,9 @@ export const deleteEvent = (id: string) =>
     demoEvents = demo().filter(x => x.id !== id); return { ok: true, local: true };
   }, 15000);
 
-export const draftReply = (emailId: string) => req<Proposal>("inbox", "/draft", post({ emailId }), () => mockProposals[0], 30000).then(normProposal);
+export const getWeek = () => req<any>("inbox", "/calendar/week", undefined, () => mockWeek).then(normEvents);
+// A real draft is an LLM call (about 5 s): with the default 2.5 s timeout the UI silently fell back to a mock proposal.
+export const draftReply = (emailId: string) => req<Proposal>("inbox", "/draft", post({ emailId }), () => mockProposals[0], 45000).then(normProposal);
 export const getAuthUrl = () => req<{ url: string }>("inbox", "/auth/url", undefined, () => ({ url: "" }));
 export const getAuthStatus = () => req<{ authed: boolean; mock: boolean }>("inbox", "/auth/status", undefined, () => ({ authed: false, mock: true }));
 export const syncInbox = () => req<any>("inbox", "/sync", post({}), () => null, 60000);
@@ -147,6 +149,14 @@ export async function runSidekick(instruction: string, onStep: (s: SidekickStep)
   } catch {
     online.actions = false;
     const steps = ["Opening the browser", "Reading the page", `Working on: ${instruction}`, "Filling 14 of 15 fields", "Paused before submit. Waiting for your OK"];
-    for (let i = 0; i < steps.length; i++) { await new Promise(r => setTimeout(r, 700)); onStep({ step: i + 1, action: i === steps.length - 1 ? "done" : "act", detail: steps[i] }); }
+    for (let i = 0; i < steps.length; i++) { await new Promise(r => setTimeout(r, 700)); onStep({ step: i + 1, action: i === steps.length - 1 ? "stopped" : "act", detail: steps[i] }); }
   }
 }
+
+// actions :7703 — automation runs (what is running now and what ran recently), newest first
+export const getRuns = () => req<Run[]>("actions", "/runs", undefined, () => mockRuns);
+export const cancelRun = (id: string) => req<Run | null>("actions", `/runs/${encodeURIComponent(id)}/cancel`, post({}), () => {
+  const r = mockRuns.find(m => m.id === id);
+  if (r && r.status === "running") { r.status = "error"; r.endedAt = new Date().toISOString(); r.lastDetail = "Stopped by you"; }
+  return r ?? null;
+});

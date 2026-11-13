@@ -59,3 +59,37 @@ export const mockKnowledge: KnowledgeFile[] = [
   { name: "writingstyle.md", content: "# Writing style\n\nCasual but polite. Short paragraphs. Signs off \"Best, Maya\".\n" },
   { name: "people.md", content: "# People\n\n- **Prof. Lee**: advisor, CS 201\n- **Jordan**: TA, MATH 220\n" },
 ];
+
+// Activity screen: automation runs (shape served by the actions service at GET /runs) and the week ahead.
+const minsAgo = (m: number) => new Date(now.getTime() - m * 60000).toISOString();
+export const mockRuns: import("./local-types").Run[] = [
+  { id: "r2", kind: "sidekick", instruction: "Unsubscribe from promo emails", status: "running", startedAt: minsAgo(1),
+    steps: [
+      { step: 1, action: "act", detail: "Opening the browser", at: minsAgo(1) },
+      { step: 2, action: "act", detail: "Found 3 promo senders you never open", at: minsAgo(1) },
+      { step: 3, action: "act", detail: "Opening the Campus Deals unsubscribe page", at: minsAgo(0) },
+    ], lastDetail: "Opening the Campus Deals unsubscribe page" },
+  { id: "r1", kind: "fill", instruction: "Fill my Stripe application", status: "stopped", startedAt: minsAgo(9), endedAt: minsAgo(6),
+    steps: [
+      { step: 1, action: "act", detail: "Opening the browser", at: minsAgo(9) },
+      { step: 2, action: "act", detail: "Reading the application form", at: minsAgo(8) },
+      { step: 3, action: "act", detail: "Filling 14 of 15 fields from your notes", at: minsAgo(7) },
+      { step: 4, action: "stopped", detail: "Paused before submit. Waiting for your OK", at: minsAgo(6) },
+    ], lastDetail: "Paused before submit. Waiting for your OK", proposalId: "p3", url: "https://jobs.example.com/stripe-intern" },
+  { id: "r0", kind: "sidekick", instruction: "Find the CS 201 syllabus", status: "done", startedAt: minsAgo(52), endedAt: minsAgo(51),
+    steps: [
+      { step: 1, action: "act", detail: "Searching your course site", at: minsAgo(52) },
+      { step: 2, action: "done", detail: "Found it and saved the link to your notes", at: minsAgo(51) },
+    ], lastDetail: "Found it and saved the link to your notes" },
+];
+
+export const mockWeek: CalEvent[] = [
+  ...mockToday,
+  { id: "w1", title: "CS 201 lab", start: at(11, 0, 1), end: at(12, 50, 1) },
+  { id: "w2", title: "◎ Study block: MATH 220 problem set", start: at(14, 0, 1), end: at(14, 50, 1), northstar: true },
+  { id: "w3", title: "Office hours with Prof. Lee", start: at(16, 0, 2), end: at(16, 30, 2) },
+  { id: "w4", title: "CS 201 project due", start: at(17, 0, 3), end: at(17, 30, 3) },
+  { id: "w5", title: "◎ Stripe assessment prep", start: at(15, 0, 4), end: at(15, 50, 4), northstar: true },
+  { id: "w6", title: "Robotics club", start: at(18, 0, 5), end: at(19, 30, 5) },
+  { id: "w7", title: "MATH 220 midterm", start: at(10, 0, 6), end: at(11, 15, 6) },
+];

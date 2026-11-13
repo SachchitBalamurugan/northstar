@@ -16,6 +16,7 @@ export function registerApproveHandler(type: ProposalType, handler: ApproveHandl
 export async function approveProposal(id: string, edits?: Record<string, unknown>): Promise<Proposal | undefined> {
   const p = getProposal(id);
   if (!p) return undefined;
+  if (p.status !== "pending") return p; // already handled: never run a handler (send/create) twice
   if (edits && Object.keys(edits).length) setProposalStatus(id, p.status, edits);
   setProposalStatus(id, "approved");
   const handler = handlers.get(p.type);
@@ -28,21 +29,42 @@ export async function approveProposal(id: string, edits?: Record<string, unknown
   }
 }
 
-export async function proposalRoutes(app: FastifyInstance): Promise<void> {
-  app.get<{ Querystring: { status?: ProposalStatus } }>("/proposals", async (req) => listProposals(req.query.status));
+const STATUSES: ProposalStatus[] = ["pending", "approved", "rejected", "done", "failed"];
 
-  app.post<{ Params: { id: string }; Body: { payload?: Record<string, unknown> } | null }>(
-    "/proposals/:id/approve",
-    async (req, reply) => {
-      const p = await approveProposal(req.params.id, req.body?.payload);
-      if (!p) return reply.code(404).send({ error: "proposal not found" });
-      return p;
-    },
-  );
+/** Validates the approve body. Returns the allowed payload edits (only `body`), or an error string for a 400. */
+export function parseApproveBody(body: unknown): { body?: string } | string {
+  if (body == null || body === "") return {};
+  if (typeof body !== "object" || Array.isArray(body)) return "body must be a JSON object";
+  const payload = (body as { payload?: unknown }).payload;
+  if (payload == null) return {};
+  if (typeof payload !== "object" || Array.isArray(payload)) return "payload must be an object";
+  const text = (payload as { body?: unknown }).body;
+  if (text == null) return {};
+  if (typeof text !== "string") return "payload.body must be a string";
+  if (!text.trim()) return "payload.body must not be empty";
+  if (text.length > 20000) return "payload.body is too long";
+  return { body: text };
+}
+
+export async function proposalRoutes(app: FastifyInstance): Promise<void> {
+  app.get<{ Querystring: { status?: string } }>("/proposals", async (req, reply) => {
+    const s = req.query.status;
+    if (s !== undefined && !STATUSES.includes(s as ProposalStatus)) return reply.code(400).send({ error: `status must be one of ${STATUSES.join(", ")}` });
+    return listProposals(s as ProposalStatus | undefined);
+  });
+
+  // Optional body { payload: { body?: string } }: the user's edited reply text. Other keys (e.g. the UI's `answers`) are ignored.
+  app.post<{ Params: { id: string }; Body: unknown }>("/proposals/:id/approve", async (req, reply) => {
+    if (!getProposal(req.params.id)) return reply.code(404).send({ error: "proposal not found" });
+    const edits = parseApproveBody(req.body);
+    if (typeof edits === "string") return reply.code(400).send({ error: edits });
+    return await approveProposal(req.params.id, edits);
+  });
 
   app.post<{ Params: { id: string } }>("/proposals/:id/reject", async (req, reply) => {
-    const p = setProposalStatus(req.params.id, "rejected");
-    if (!p) return reply.code(404).send({ error: "proposal not found" });
-    return p;
+    const cur = getProposal(req.params.id);
+    if (!cur) return reply.code(404).send({ error: "proposal not found" });
+    if (cur.status !== "pending") return cur;
+    return setProposalStatus(cur.id, "rejected");
   });
 }

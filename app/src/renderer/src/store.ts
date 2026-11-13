@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
-export type Screen = "dashboard" | "now" | "approve" | "workflow" | "knowledge";
-export type WorkflowTab = "inbox" | "calendar" | "discover";
+export type Screen = "dashboard" | "now" | "activity" | "approve" | "workflow" | "knowledge";
+export type WorkflowTab = "inbox" | "calendar" | "courses" | "discover";
 
 interface UIState {
   screen: Screen; setScreen: (s: Screen) => void;

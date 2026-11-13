@@ -34,7 +34,7 @@ async function startServer(): Promise<void> {
   const out = fs.openSync(logFile, "a");
   child = spawn("npx", ["tsx", "src/server.ts"], {
     cwd: ROOT,
-    env: { ...process.env, PORT: String(PORT), MOCK: "1", HEADLESS: "1", ACTIONS_DATA_DIR: dataDir },
+    env: { ...process.env, PORT: String(PORT), MOCK: "1", HEADLESS: "1", ACTIONS_DATA_DIR: dataDir, DESKTOP_CONTROL: "0" },
     stdio: ["ignore", out, out],
     detached: true, // own process group, so npx + tsx + node + chromium all die together
   });
@@ -899,6 +899,497 @@ async function run() {
     const kb = (n: number) => `${Math.round(n / 1024)} KB`;
     const disk = fs.statSync(path.join(dataDir, "proposals.json")).size;
     return `${all.json.length} proposals (${fills.length} fill_form): GET /proposals = ${kb(all.text.length)}, ?status=pending = ${kb(pend.text.length)}, proposals.json = ${kb(disk)}; screenshots are ${kb(shotBytes)} of it (avg ${kb(shotBytes / Math.max(1, fills.length))} per fill, max ${kb(Math.max(0, ...shots))})`;
+  });
+
+  // ── runs registry (Activity screen) ──
+  /** Starts a sidekick task, reads the stream until the first frame, and hands back the open stream. */
+  async function sseOpen(instruction: string) {
+    const ac = new AbortController();
+    const res = await fetch(`${BASE}/sidekick`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "text/event-stream" },
+      body: JSON.stringify({ instruction }),
+      signal: ac.signal,
+    });
+    assert.equal(res.status, 200, `status ${res.status}`);
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while (!/\n\n/.test(buf)) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+    }
+    const first = JSON.parse(buf.split(/\n\n/)[0].replace(/^data: ?/, ""));
+    return { first, abort: () => ac.abort(), reader };
+  }
+  async function waitRun(id: string, ms = 30_000): Promise<any> {
+    const end = Date.now() + ms;
+    let run: any = null;
+    while (Date.now() < end) {
+      run = (await http("GET", `/runs/${id}`)).json;
+      if (run?.status && run.status !== "running") return run;
+      await sleep(200);
+    }
+    return run;
+  }
+  function assertRunShape(r: any) {
+    for (const k of ["id", "kind", "instruction", "status", "startedAt", "lastDetail"])
+      assert.equal(typeof r?.[k], "string", `run.${k} is ${typeof r?.[k]}`);
+    assert.ok(Array.isArray(r.steps), "run.steps is not an array");
+    r.steps.forEach((st: any, i: number) => {
+      assert.deepEqual(Object.keys(st).sort(), ["action", "at", "detail", "step"], `steps[${i}] keys: ${Object.keys(st)}`);
+      assert.equal(st.step, i + 1, `steps[${i}].step = ${st.step}`);
+    });
+    assert.ok(!JSON.stringify(r).includes("screenshot"), "run carries a screenshot");
+  }
+
+  let finishedRunId = "";
+  await check("17 runs: sidekick run is recorded, SSE frames carry runId", async () => {
+    const s = await sse("find the CS 101 syllabus");
+    assertStream(s);
+    const runId = s.frames[0].runId;
+    assert.ok(typeof runId === "string" && runId.length > 0, `frame.runId is ${short(runId)}`);
+    assert.ok(s.frames.every((f) => f.runId === runId), "not every frame carries the same runId");
+    const list = await http("GET", "/runs");
+    assert.equal(list.status, 200);
+    assert.ok(Array.isArray(list.json) && list.json.length <= 30, "GET /runs must be an array of at most 30");
+    assert.equal(list.json[0]?.id, runId, "newest run is not first in GET /runs");
+    const starts = list.json.map((r: any) => r.startedAt);
+    assert.deepEqual(starts, [...starts].sort().reverse(), "GET /runs is not newest first");
+    const one = await http("GET", `/runs/${runId}`);
+    assert.equal(one.status, 200);
+    const r = one.json;
+    assertRunShape(r);
+    assert.equal(r.kind, "sidekick");
+    assert.equal(r.instruction, "find the CS 101 syllabus");
+    assert.equal(r.status, "done", `status "${r.status}"`);
+    assert.ok(typeof r.endedAt === "string", "endedAt missing on a finished run");
+    assert.equal(r.steps.length, s.frames.length, `${r.steps.length} steps vs ${s.frames.length} frames`);
+    r.steps.forEach((st: any, i: number) => {
+      assert.equal(st.action, s.frames[i].action);
+      assert.equal(st.detail, s.frames[i].detail);
+    });
+    assert.equal(r.lastDetail, s.frames[s.frames.length - 1].detail);
+    const running = await http("GET", "/runs?status=running");
+    assert.ok(Array.isArray(running.json) && running.json.every((x: any) => x.status === "running"), "?status=running filter");
+    const done = await http("GET", "/runs?status=done");
+    assert.ok(done.json.some((x: any) => x.id === runId), "?status=done does not list the run");
+    assert.ok(fs.existsSync(path.join(dataDir, "runs.json")), "runs.json was not written");
+    finishedRunId = runId;
+    return `run ${runId.slice(0, 8)} done with ${r.steps.length} steps; /runs lists ${list.json.length}`;
+  });
+
+  await check("18 runs: \"Fill my Stripe application\" → fill run stopped → approve → done", async () => {
+    const s = await sse("Fill my Stripe application");
+    assert.equal(s.status, 200, `status ${s.status}: ${short(s.bodyText)}`);
+    assert.ok(s.frames.length >= 4, `only ${s.frames.length} frames: ${short(s.frames.map((f) => f.detail))}`);
+    const last = s.frames[s.frames.length - 1];
+    assert.equal(last.action, "stopped", `last frame is "${last.action}": ${short(last.detail)}`);
+    assert.match(last.detail, /^Filled \d+ of \d+ fields\..*Waiting for your OK in Approve\.$/, `detail: ${last.detail}`);
+    assert.ok(typeof last.proposalId === "string", "final frame has no proposalId");
+    assert.ok(s.frames.every((f) => f.runId === last.runId && typeof f.runId === "string"), "frames lack runId");
+    s.frames.forEach((f, i) => assert.equal(f.step, i + 1, `frame ${i} has step ${f.step}`));
+    assert.ok(s.frames.some((f) => /page 2/i.test(f.detail)), "no progress frame mentions page 2");
+    let r = (await http("GET", `/runs/${last.runId}`)).json;
+    assertRunShape(r);
+    assert.equal(r.kind, "fill");
+    assert.equal(r.status, "stopped");
+    assert.equal(r.proposalId, last.proposalId);
+    assert.equal(r.url, FIXTURE_URL, `run.url = ${r.url}`);
+    const pend = (await http("GET", "/proposals?status=pending", { timeout: 60_000 })).json as any[];
+    const prop = pend.find((x) => x.id === last.proposalId);
+    assert.ok(prop, "proposal is not pending");
+    assert.equal(prop.type, "fill_form");
+    assert.equal(prop.payload.mapper, "heuristic");
+    const a = await http("POST", `/proposals/${prop.id}/approve`, { body: { answers: { "#reference": REFERENCE } }, timeout: 120_000 });
+    assert.equal(a.json?.status, "done", `approve → "${a.json?.status}" ${short(a.json?.payload?.error ?? "", 120)}`);
+    r = (await http("GET", `/runs/${last.runId}`)).json;
+    assertRunShape(r);
+    assert.equal(r.status, "done", `run status after approve: "${r.status}" (${short(r.lastDetail, 100)})`);
+    assert.match(r.lastDetail, /^Submitted\. \S/, `lastDetail: ${short(r.lastDetail)}`);
+    assert.equal(r.steps.length, s.frames.length + 1, "approve should add exactly one step");
+    return `${s.frames.length} frames [${s.frames.map((f) => f.action).join(",")}]; "${last.detail}" → ${short(r.lastDetail, 60)}`;
+  });
+
+  await check("19 runs: direct /fill records a run; reject → done \"Skipped by you\"", async () => {
+    const r = await fill();
+    assert.equal(r.status, 200, `fill status ${r.status}`);
+    const run = ((await http("GET", "/runs")).json as any[]).find((x) => x.proposalId === r.json.id);
+    assert.ok(run, "no run linked to the /fill proposal");
+    assertRunShape(run);
+    assert.equal(run.kind, "fill");
+    assert.equal(run.instruction, `Fill ${FIXTURE_URL}`);
+    assert.equal(run.status, "stopped");
+    assert.ok(run.steps.length >= 4, `only ${run.steps.length} steps`);
+    await http("POST", `/proposals/${r.json.id}/reject`);
+    const after = (await http("GET", `/runs/${run.id}`)).json;
+    assert.equal(after.status, "done");
+    assert.equal(after.lastDetail, "Skipped by you");
+    // A failed approval turns the run into an error.
+    const f2 = await fill();
+    const s2 = await http("POST", "/submit", { body: { proposalId: f2.json.id }, timeout: 120_000 });
+    assert.equal(s2.json?.status, "failed");
+    const run2 = ((await http("GET", "/runs")).json as any[]).find((x) => x.proposalId === f2.json.id);
+    assert.equal(run2?.status, "error", `run after failed submit: ${run2?.status}`);
+    assert.equal(run2.lastDetail, s2.json.payload.error);
+    return `fill run ${run.steps.length} steps; rejected → "${after.lastDetail}"; failed submit → error`;
+  });
+
+  await check("20 runs: unknown id → 404; cancel on a finished run is a no-op", async () => {
+    assert.equal((await http("GET", `/runs/${UNKNOWN_ID}`)).status, 404);
+    assert.equal((await http("POST", `/runs/${UNKNOWN_ID}/cancel`)).status, 404);
+    assert.ok(finishedRunId, "no finished run (check 17 failed)");
+    const before = (await http("GET", `/runs/${finishedRunId}`)).json;
+    const c = await http("POST", `/runs/${finishedRunId}/cancel`);
+    assert.equal(c.status, 200, `cancel status ${c.status}`);
+    assert.deepEqual(c.json, before, "cancel changed a finished run");
+    assert.deepEqual((await http("GET", `/runs/${finishedRunId}`)).json, before);
+    return `404s ok; finished run stays "${before.status}"`;
+  });
+
+  await check("21 runs: a run keeps going to completion after the client aborts the stream", async () => {
+    const tabsBefore = await tabCount();
+    const o = await sseOpen("find the CS 101 syllabus");
+    assert.ok(typeof o.first.runId === "string", "first frame has no runId");
+    assert.equal((await http("GET", `/runs/${o.first.runId}`)).json?.status, "running", "run is not running after the first frame");
+    o.abort();
+    const r = await waitRun(o.first.runId);
+    assert.equal(r?.status, "done", `status "${r?.status}" (${short(r?.lastDetail, 80)})`);
+    assert.deepEqual(r.steps.map((x: any) => x.action), ["goto", "click", "verify", "done"]);
+    if (tabsBefore !== null) assert.equal(await waitTabs(tabsBefore), tabsBefore, "the run left its tab open");
+    assert.equal((await http("GET", "/health")).status, 200);
+    return `aborted after frame 1; run finished "${r.status}" with ${r.steps.length} steps`;
+  });
+
+  await check("22 runs: cancel stops a running run → error / \"Cancelled\"", async () => {
+    const o = await sseOpen("look up the dining hall hours");
+    const c = await http("POST", `/runs/${o.first.runId}/cancel`);
+    assert.equal(c.status, 200);
+    assert.equal(c.json?.status, "error", `status "${c.json?.status}"`);
+    assert.equal(c.json?.lastDetail, "Cancelled");
+    let rest = "";
+    const dec = new TextDecoder();
+    for (;;) {
+      const { value, done } = await o.reader.read();
+      if (done) break;
+      rest += dec.decode(value, { stream: true });
+    }
+    const frames = rest.split(/\n\n/).filter((b) => b.startsWith("data:")).map((b) => JSON.parse(b.replace(/^data: ?/, "")));
+    const last = frames[frames.length - 1];
+    assert.ok(last && last.action === "error" && last.detail === "Cancelled", `stream did not end with a Cancelled frame: ${short(last)}`);
+    await sleep(700);
+    const r = (await http("GET", `/runs/${o.first.runId}`)).json;
+    assert.equal(r.status, "error");
+    assert.equal(r.lastDetail, "Cancelled");
+    assert.ok(r.steps.length <= 3, `run kept recording after cancel: ${r.steps.length} steps`);
+    return `cancelled after ${r.steps.length - 1} step(s); stream ended with "Cancelled"`;
+  });
+
+  await check("23 desktop: GET /desktop/status shape (control off, MOCK: no probing)", async () => {
+    const r = await http("GET", "/desktop/status");
+    assert.equal(r.status, 200, `status ${r.status}: ${short(r.text)}`);
+    const j = r.json;
+    assert.equal(j?.enabled, false, `enabled is ${j?.enabled} with DESKTOP_CONTROL off`);
+    assert.equal(j?.llm, false, `llm is ${j?.llm} under MOCK`);
+    assert.equal(j?.platform, process.platform);
+    assert.equal(typeof j?.permissions?.screen, "boolean");
+    assert.equal(typeof j?.permissions?.input, "boolean");
+    assert.equal(typeof j?.permissions?.hint, "string");
+    if (!j.permissions.screen || !j.permissions.input) assert.ok(j.permissions.hint.length > 20, "a missing permission must come with a hint");
+    return `enabled=${j.enabled} llm=${j.llm} platform=${j.platform} screen=${j.permissions.screen} input=${j.permissions.input}`;
+  });
+
+  const sseBody = async (body: unknown) => {
+    const res = await fetch(`${BASE}/sidekick`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "text/event-stream" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(60_000),
+    });
+    const text = await res.text();
+    const frames: any[] = text.split(/\r?\n\r?\n/).filter((b) => b.startsWith("data:")).map((b) => JSON.parse(b.replace(/^data: ?/, "")));
+    return { status: res.status, frames };
+  };
+
+  await check("24 desktop: control off → desktop-style instruction still gets the browser-instead fallback", async () => {
+    for (const body of [{ instruction: "open Excel and make a budget spreadsheet" }, { instruction: "open Excel and make a budget spreadsheet", mode: "browser" }]) {
+      const s = await sseBody(body);
+      assert.equal(s.status, 200);
+      assert.deepEqual(s.frames.map((f) => f.action), ["info", "done"], `frames for ${short(body)}: ${short(s.frames.map((f) => f.action))}`);
+      assert.match(s.frames[0].detail, /I can do this in the browser instead/);
+      assert.ok(s.frames[1].proposalId, "fallback did not create a task proposal");
+    }
+    return "info + done with the browser-instead message and a task proposal (mode absent and mode:\"browser\")";
+  });
+
+  await check("25 desktop: mode:\"desktop\" under MOCK → canned stream, nothing touched", async () => {
+    const mouse = () => {
+      // Reads the real pointer position without any permission (macOS only); "" elsewhere.
+      if (process.platform !== "darwin") return "";
+      try {
+        return execFileSync("osascript", ["-l", "JavaScript", "-e", "ObjC.import('AppKit'); const p = $.NSEvent.mouseLocation; `${Math.round(p.x)},${Math.round(p.y)}`"], { encoding: "utf8", timeout: 8000 }).trim();
+      } catch {
+        return "";
+      }
+    };
+    const before = mouse();
+    const pendingBefore: any[] = (await http("GET", "/proposals?status=pending")).json ?? [];
+    const s = await sseBody({ instruction: "write a short note in TextEdit", mode: "desktop" });
+    assert.equal(s.status, 200);
+    assert.ok(s.frames.length >= 2 && s.frames.length <= 6, `${s.frames.length} frames`);
+    s.frames.forEach((f, i) => {
+      assert.equal(f.step, i + 1);
+      assert.equal(typeof f.runId, "string");
+      assert.equal(f.screenshot, undefined, "demo frames must not carry a real screenshot");
+    });
+    const last = s.frames[s.frames.length - 1];
+    assert.equal(last.action, "done", `last frame is ${last.action}`);
+    assert.match(s.frames.map((f) => f.detail).join(" "), /demo/i);
+    const run = (await http("GET", `/runs/${last.runId}`)).json;
+    assert.equal(run.kind, "sidekick");
+    assert.equal(run.status, "done");
+    assert.ok(!JSON.stringify(run).includes("screenshot"), "run record mentions a screenshot");
+    const pendingAfter: any[] = (await http("GET", "/proposals?status=pending")).json ?? [];
+    assert.equal(pendingAfter.length, pendingBefore.length, "demo desktop run created a proposal");
+    const after = mouse();
+    if (before && after) assert.equal(after, before, `mouse moved during the demo run (${before} → ${after}); if you moved it yourself, rerun`);
+    const log = fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8") : "";
+    assert.ok(!/nut-tree|accessibility features|screen recording features/i.test(log), "the native input layer was loaded in MOCK mode");
+    return `${s.frames.length} frames [${s.frames.map((f) => f.action).join(",")}]; native layer not loaded; mouse ${before ? `unchanged at ${after}` : "position not checked on this OS"}`;
+  });
+
+  await check("26 desktop safety classifier [unit test of src/desktop/safety.ts; live stop path needs an LLM]", async () => {
+    const { classifyDesktopAction, looksLikeSecret, looksLikeShellCommand } = await import("../src/desktop/safety.ts");
+    const cases: [string, any, boolean, string?][] = [
+      // stop: one or more per category
+      ["type into Password field", { action: "type", target: "Password field in login window", text: "x", frontApp: "Safari" }, true, "password"],
+      ["click Sign in button", { action: "click", target: "Sign in button", frontApp: "Safari" }, true, "password"],
+      ["click Pay now", { action: "click", target: "Pay now button", frontApp: "Safari" }, true, "payment"],
+      ["click Buy in App Store-like dialog", { action: "click", target: "Buy button", frontApp: "Music" }, true, "payment"],
+      ["open a banking app", { action: "open_app", app: "Chase Bank" }, true, "payment"],
+      ["open Coinbase (crypto)", { action: "open_app", app: "Coinbase" }, true, "payment"],
+      ["type a card number", { action: "type", target: "Notes text area", text: "4111 1111 1111 1111", frontApp: "Notes" }, true, "payment"],
+      ["click Send in Mail", { action: "click", target: "Send button in Mail compose window", frontApp: "Mail" }, true, "send"],
+      ["click Submit", { action: "click", target: "Submit button", frontApp: "Safari" }, true, "send"],
+      ["click Publish", { action: "click", target: "Publish button", frontApp: "Pages" }, true, "send"],
+      ["press enter in Messages", { action: "key", keys: "enter", target: "Message field", frontApp: "Messages" }, true, "send"],
+      ["press cmd+enter", { action: "key", keys: "cmd+enter", frontApp: "TextEdit" }, true, "send"],
+      ["click Delete", { action: "click", target: "Delete button in confirmation dialog", frontApp: "Photos" }, true, "delete"],
+      ["click Empty Trash", { action: "click", target: "Empty Trash menu item", frontApp: "Finder" }, true, "delete"],
+      ["click Erase / format disk", { action: "click", target: "Format disk button", frontApp: "Photos" }, true, "delete"],
+      ["click Uninstall", { action: "click", target: "Uninstall button", frontApp: "Steam" }, true, "delete"],
+      ["keys cmd+delete", { action: "key", keys: "cmd+delete", frontApp: "Finder" }, true, "delete"],
+      ["keys shift+delete", { action: "key", keys: "Shift+Delete", frontApp: "File Explorer" }, true, "delete"],
+      ["keys cmd+shift+delete", { action: "key", keys: "cmd+shift+delete", frontApp: "Finder" }, true, "delete"],
+      ["keys ctrl+alt+delete", { action: "key", keys: "ctrl+alt+delete", frontApp: "Notepad" }, true, "system_keys"],
+      ["keys alt+f4", { action: "key", keys: "alt+f4", frontApp: "Desktop" }, true, "system_keys"],
+      ["keys cmd+ctrl+q (lock)", { action: "key", keys: "cmd+ctrl+q", frontApp: "TextEdit" }, true, "power"],
+      ["click Shut Down…", { action: "click", target: "Shut Down… in Apple menu", frontApp: "TextEdit" }, true, "power"],
+      ["click Restart", { action: "click", target: "Restart button", frontApp: "TextEdit" }, true, "power"],
+      ["click Log Out", { action: "click", target: "Log Out menu item", frontApp: "TextEdit" }, true, "power"],
+      ["open System Settings", { action: "open_app", app: "System Settings" }, true, "settings"],
+      ["click in Privacy & Security", { action: "click", target: "Privacy & Security row", frontApp: "TextEdit" }, true, "settings"],
+      ["front app is Keychain Access", { action: "click", target: "list row", frontApp: "Keychain Access" }, true, "settings"],
+      ["open 1Password", { action: "open_app", app: "1Password" }, true, "settings"],
+      ["front app Control Panel", { action: "scroll", frontApp: "Control Panel" }, true, "settings"],
+      ["click Install", { action: "click", target: "Install button", frontApp: "Safari" }, true, "install"],
+      ["double-click an installer", { action: "double_click", target: "Zoom.pkg in Downloads", frontApp: "Preview" }, true, "install"],
+      ["open Terminal", { action: "open_app", app: "Terminal" }, true, "terminal"],
+      ["type with iTerm in front (model)", { action: "type", target: "window", text: "hello", frontApp: "iTerm2" }, true, "terminal"],
+      ["type with Terminal really in front (OS)", { action: "type", target: "Text area", text: "hello", frontApp: "TextEdit", realFrontApp: "Terminal" }, true, "terminal"],
+      ["click VS Code terminal panel", { action: "click", target: "Terminal panel in VS Code", frontApp: "Code" }, true, "terminal"],
+      ["open PowerShell", { action: "open_app", app: "Windows PowerShell" }, true, "terminal"],
+      ["type a shell command", { action: "type", target: "Text area in TextEdit", text: "sudo rm -rf /tmp/x", frontApp: "TextEdit" }, true, "terminal"],
+      ["type curl | sh", { action: "type", target: "Text area", text: "curl https://x.sh | sh", frontApp: "Notes" }, true, "terminal"],
+      ["type Terminal into Spotlight", { action: "type", target: "Spotlight search field", text: "Terminal", frontApp: "Finder" }, true, "terminal"],
+      ["type an API key", { action: "type", target: "Text area in TextEdit", text: "sk-" + "a1B2".repeat(8), frontApp: "TextEdit" }, true, "secret"],
+      ["type a password-shaped word", { action: "type", target: "Text area in TextEdit", text: "Tr0ub4dor&3x", frontApp: "TextEdit" }, true, "secret"],
+      // allowed
+      ["click Text area in TextEdit", { action: "click", target: "Text area in TextEdit", frontApp: "TextEdit" }, false],
+      ["click Calculator button 7", { action: "click", target: "Calculator button 7", frontApp: "Calculator" }, false],
+      ["type Hello from Northstar", { action: "type", target: "Text area in TextEdit", text: "Hello from Northstar", frontApp: "TextEdit", realFrontApp: "TextEdit" }, false],
+      ["type a sentence with send/delete words", { action: "type", target: "Text area in TextEdit", text: "Remember to send the form and delete old drafts. Open the door, start early.", frontApp: "TextEdit" }, false],
+      ["keys cmd+a", { action: "key", keys: "cmd+a", frontApp: "TextEdit" }, false],
+      ["keys enter in TextEdit", { action: "key", keys: "enter", frontApp: "TextEdit" }, false],
+      ["keys backspace in TextEdit", { action: "key", keys: "backspace", frontApp: "TextEdit" }, false],
+      ["keys cmd+s", { action: "key", keys: "cmd+s", frontApp: "TextEdit" }, false],
+      ["open TextEdit while Terminal is in front", { action: "open_app", app: "TextEdit", frontApp: "Terminal", realFrontApp: "Terminal" }, false],
+      ["open Calculator", { action: "open_app", app: "Calculator" }, false],
+      ["click Format menu in TextEdit", { action: "click", target: "Format menu in TextEdit menu bar", frontApp: "TextEdit" }, false],
+      ["scroll in Notes", { action: "scroll", frontApp: "Notes" }, false],
+      ["wait", { action: "wait", frontApp: "Terminal" }, false],
+    ];
+    const bad: string[] = [];
+    for (const [name, action, stop, cat] of cases) {
+      const v = classifyDesktopAction(action);
+      if (v.stop !== stop || (stop && cat && v.category !== cat)) bad.push(`${name} → stop=${v.stop} category=${v.category}`);
+    }
+    assert.equal(bad.length, 0, `misclassified: ${bad.join("; ")}`);
+    assert.equal(looksLikeSecret("Hello from Northstar"), false);
+    assert.equal(looksLikeSecret("maya.chen@example.edu"), false);
+    assert.equal(looksLikeSecret("my password is hunter2"), true);
+    assert.equal(looksLikeShellCommand("Open the door and start early"), false);
+    assert.equal(looksLikeShellCommand("open -a Terminal"), true);
+    return `${cases.length} classifier cases correct (${cases.filter((c) => c[2]).length} stop, ${cases.filter((c) => !c[2]).length} allowed)`;
+  });
+
+  // ───────── admin forms + tab organizer ─────────
+  const APPT_URL = `${BASE}/fixtures/appointment.html`;
+  let appt: any = null;
+  await check("27 fill: generic appointment form → pending proposal, known fields filled, student ID asked not invented", async () => {
+    const prof = (await http("GET", "/profile")).json;
+    const r = await http("POST", "/fill", { body: { url: APPT_URL }, timeout: 90_000 });
+    assert.equal(r.status, 200, `status ${r.status}: ${short(r.text)}`);
+    const p = r.json;
+    assertProposalShape(p, "fill_form");
+    appt = p;
+    assert.equal(p.status, "pending");
+    const fields: any[] = p.payload.fields;
+    const val = (re: RegExp) => valueText(fields.find((f) => re.test(f.label))?.value);
+    assert.equal(val(/full name/i), prof.name, "full name not filled from profile");
+    assert.equal(val(/email/i), prof.email, "email not filled from profile");
+    assert.equal(val(/major/i), prof.major, "major not filled from profile");
+    assert.ok(!fields.some((f) => /student id|date|time slot|reason/i.test(f.label)), `a field the profile cannot answer was filled: ${short(fields.map((f) => `${f.label}=${valueText(f.value)}`))}`);
+    const unknown: any[] = p.payload.unknown;
+    assert.equal(unknown.length, 1, `expected only Student ID to be unknown+required, got: ${unknown.map((f) => f.label).join(" | ")}`);
+    assert.match(unknown[0].label, /student id/i);
+    assert.equal(p.payload.skipped.length, 3, `expected date, time slot, reason skipped, got: ${p.payload.skipped.map((f: any) => f.label).join(" | ")}`);
+    assert.equal(p.payload.totalCount, 7);
+    const pend = (await http("GET", "/proposals?status=pending")).json as any[];
+    const task = pend.find((x) => x.id === p.payload.taskProposalId);
+    assert.ok(task, "no pending task proposal for the unknown required field");
+    assertProposalShape(task, "task");
+    assert.match(`${task.why} ${JSON.stringify(task.payload)}`, /student id/i, "task proposal does not ask for the student ID");
+    return `${fields.length}/7 filled (name, email, major); Student ID → task proposal; ${p.payload.skipped.length} optional skipped; mapper=${p.payload.mapper}`;
+  });
+
+  const STUDENT_TABS = [
+    { id: "a", title: "English R1B Essay 2 draft - Google Docs", url: "https://docs.google.com/document/d/x/edit", active: true },
+    { id: "b", title: "ChatGPT - Essay outline feedback", url: "https://chatgpt.com/c/1" },
+    { id: "c", title: "English R1B: Essay 2 prompt and rubric - bCourses", url: "https://bcourses.berkeley.edu/courses/1/assignments/2" },
+    { id: "d", title: "CS 61A Homework 5 | Gradescope", url: "https://www.gradescope.com/courses/6/assignments/5" },
+    { id: "e", title: "CS 61A - Piazza: hw5 q3 recursion hint", url: "https://piazza.com/class/x/post/412" },
+    { id: "f", title: "Software Engineering Intern, Summer 2027 - Acme Robotics", url: "https://boards.greenhouse.io/acme/jobs/1" },
+    { id: "g", title: "Internships | Handshake", url: "https://app.joinhandshake.com/stu/postings" },
+    { id: "h", title: "lofi hip hop radio - YouTube", url: "https://www.youtube.com/watch?v=x" },
+    { id: "i", title: "how to cite a website mla - Google Search", url: "https://www.google.com/search?q=how+to+cite" },
+    { id: "j", title: "CS 61A Homework 5 | Gradescope", url: "https://www.gradescope.com/courses/6/assignments/5#q2" },
+    { id: "k", title: "YouTube", url: "https://www.youtube.com/", active: true },
+  ];
+  const assertTab = (t: any) => {
+    assert.ok(typeof t?.id === "string" && t.id, `tab without string id: ${short(t)}`);
+    assert.ok(typeof t.title === "string" && typeof t.url === "string", `tab without title/url: ${short(t)}`);
+  };
+
+  await check("28 tabs: GET /tabs shape; POST /tabs/organize groups by task, ≤5 groups, archive suggestions", async () => {
+    const g = await http("GET", "/tabs");
+    assert.equal(g.status, 200, `GET /tabs → ${g.status}`);
+    assert.ok(Array.isArray(g.json?.tabs), "tabs is not an array");
+    g.json.tabs.forEach(assertTab);
+
+    const r = await http("POST", "/tabs/organize", { body: { tabs: STUDENT_TABS } });
+    assert.equal(r.status, 200, `status ${r.status}: ${short(r.text)}`);
+    const { groups, archive } = r.json;
+    assert.ok(Array.isArray(groups) && groups.length >= 2 && groups.length <= 5, `groups.length=${groups?.length}`);
+    for (const x of groups) {
+      assert.ok(x.id && x.name && typeof x.why === "string" && x.why && Array.isArray(x.tabIds) && x.tabIds.length, `bad group ${short(x)}`);
+    }
+    const groupOf = (id: string) => groups.find((x: any) => x.tabIds.includes(id));
+    const essay = groupOf("a");
+    assert.ok(essay && essay.tabIds.includes("b") && essay.tabIds.includes("c"), `essay doc, ChatGPT and bCourses tabs are not one task group: ${short(groups, 400)}`);
+    assert.match(essay.name, /R1B|essay/i);
+    assert.equal(groupOf("d"), groupOf("e"), "CS 61A tabs split up");
+    assert.notEqual(groupOf("d"), essay, "everything lumped in one group");
+    assert.equal(groupOf("f"), groupOf("g"), "internship tabs split up");
+    assert.match(groupOf("f").name, /intern/i);
+    const arch = new Map<string, string>(archive.map((a: any) => [a.tabId, a.why]));
+    for (const id of ["h", "i", "j"]) assert.ok(arch.get(id), `tab ${id} not suggested for archive: ${short(archive, 300)}`);
+    assert.ok(!arch.has("k") && !arch.has("a"), "an active tab was suggested for archive");
+    const placed = [...groups.flatMap((x: any) => x.tabIds), ...arch.keys()];
+    assert.equal(new Set(placed).size, placed.length, "a tab appears twice");
+    assert.deepEqual([...placed].sort(), STUDENT_TABS.map((t) => t.id).sort(), "not every tab was placed exactly once");
+
+    const many = Array.from({ length: 14 }, (_, n) => ({ id: `m${n}`, title: `Course${n} ${100 + n} notes`, url: `https://example.edu/c${n}` }));
+    const m = await http("POST", "/tabs/organize", { body: { tabs: many } });
+    assert.ok(m.json.groups.length <= 5, `14 unrelated tabs gave ${m.json.groups.length} groups`);
+    assert.equal(m.json.groups.flatMap((x: any) => x.tabIds).length + m.json.archive.length, 14, "tabs lost when folding groups");
+
+    const def = await http("POST", "/tabs/organize", { body: {} });
+    assert.equal(def.status, 200);
+    assert.ok(Array.isArray(def.json.groups) && Array.isArray(def.json.archive));
+    assert.ok(badInput((await http("POST", "/tabs/organize", { body: { tabs: "nope" } })).status), "tabs:\"nope\" accepted");
+    return `${groups.length} groups (${groups.map((x: any) => `${x.name}:${x.tabIds.length}`).join(", ")}); ${archive.length} to archive; source=${r.json.source}`;
+  });
+
+  await check("29 tabs: sessions save → list → restore → archive (saved before closed) → restore → delete", async () => {
+    const urls = [`${BASE}/fixtures/syllabus.html`, `${BASE}/fixtures/newsletter-unsubscribe.html`];
+    const s = await http("POST", "/tabs/sessions", { body: { name: "Smoke study session", tabs: urls.map((url, n) => ({ id: `s${n}`, title: `Fixture ${n}`, url })) } });
+    assert.equal(s.status, 200, `save → ${s.status}: ${short(s.text)}`);
+    assert.ok(s.json.id && s.json.name === "Smoke study session" && !Number.isNaN(Date.parse(s.json.createdAt)) && s.json.tabs.length === 2, `bad session ${short(s.json)}`);
+    const onDisk = JSON.parse(fs.readFileSync(path.join(dataDir, "tab-sessions.json"), "utf8"));
+    assert.ok(onDisk.some((x: any) => x.id === s.json.id), "session not persisted under ACTIONS_DATA_DIR");
+    const list = await http("GET", "/tabs/sessions");
+    assert.ok(list.json.sessions.some((x: any) => x.id === s.json.id), "saved session not in GET /tabs/sessions");
+    assert.ok(badInput((await http("POST", "/tabs/sessions", { body: { tabs: [] } })).status), "session without a name accepted");
+    assert.equal((await http("POST", `/tabs/sessions/${UNKNOWN_ID}/restore`)).status, 404);
+
+    // The browser is already open (the fill checks used it), so restore opens real tabs even under MOCK.
+    const r = await http("POST", `/tabs/sessions/${s.json.id}/restore`, { timeout: 40_000 });
+    assert.equal(r.status, 200, `restore → ${r.status}: ${short(r.text)}`);
+    assert.equal(r.json.ok, true);
+    assert.deepEqual(r.json.urls, urls);
+    assert.equal(r.json.opened, 2, `opened=${r.json.opened}`);
+    let tabs: any[] = (await http("GET", "/tabs")).json.tabs;
+    const mine = tabs.filter((t) => urls.includes(t.url));
+    assert.equal(mine.length, 2, `restored tabs not listed by GET /tabs: ${short(tabs, 300)}`);
+    assert.ok(mine.every((t) => t.title && t.title !== t.url), "live tabs have no page title");
+
+    // A filled form waiting for approval is protected.
+    const formTab = tabs.find((t) => t.url === APPT_URL);
+    assert.ok(appt?.id && formTab, "the pending appointment form's tab is not listed (check 27 failed?)");
+    const prot = await http("POST", "/tabs/archive", { body: { tabIds: [formTab.id] } });
+    assert.ok(badInput(prot.status), `archiving the pending form tab → ${prot.status}`);
+    const o = await http("POST", "/tabs/organize", { body: {} });
+    assert.ok(!o.json.archive.some((a: any) => a.tabId === formTab.id), "organize suggested archiving the pending form tab");
+
+    assert.ok(badInput((await http("POST", "/tabs/archive", { body: { tabIds: [] } })).status), "empty tabIds accepted");
+    assert.ok(badInput((await http("POST", "/tabs/archive", { body: { tabIds: ["no-such-tab"] } })).status), "unknown tab id accepted");
+    const before = (await http("GET", "/tabs/sessions")).json.sessions.length;
+    const a = await http("POST", "/tabs/archive", { body: { tabIds: [...mine.map((t) => t.id), "no-such-tab"] } });
+    assert.equal(a.status, 200, `archive → ${a.status}: ${short(a.text)}`);
+    assert.equal(a.json.ok, true);
+    assert.equal(a.json.closed, 2, `closed=${a.json.closed}`);
+    const sessions: any[] = (await http("GET", "/tabs/sessions")).json.sessions;
+    assert.equal(sessions.length, before + 1, "archive did not add exactly one session (or a failed archive added one)");
+    const arch = sessions.find((x) => x.id === a.json.sessionId);
+    assert.ok(arch && /^Archived /.test(arch.name), `archive session missing or not auto-named: ${short(arch)}`);
+    assert.deepEqual(arch.tabs.map((t: any) => t.url).sort(), [...urls].sort(), "closed tabs are not all in the saved session");
+    tabs = (await http("GET", "/tabs")).json.tabs;
+    assert.ok(!tabs.some((t) => urls.includes(t.url)), "archived tabs are still open");
+    assert.ok(tabs.some((t) => t.url === APPT_URL), "the pending form tab was closed");
+
+    const undo = await http("POST", `/tabs/sessions/${a.json.sessionId}/restore`, { timeout: 40_000 });
+    assert.equal(undo.json.opened, 2, "undo (restore of the archive) did not reopen both tabs");
+    tabs = (await http("GET", "/tabs")).json.tabs;
+    const again = tabs.filter((t) => urls.includes(t.url));
+    assert.equal(again.length, 2);
+    const tidy = await http("POST", "/tabs/archive", { body: { tabIds: again.map((t) => t.id) } });
+    assert.equal(tidy.json.closed, 2);
+    for (const id of [s.json.id, a.json.sessionId, tidy.json.sessionId]) assert.equal((await http("DELETE", `/tabs/sessions/${id}`)).status, 200);
+    assert.equal((await http("DELETE", `/tabs/sessions/${s.json.id}`)).status, 404);
+    assert.equal((await http("GET", "/tabs/sessions")).json.sessions.length, before - 1);
+    return `saved 2, restored 2, archived 2 into "${arch.name}" then closed, undo reopened 2, pending form tab protected, sessions deleted`;
+  });
+
+  await check("30 fill: appointment form submits once the student supplies the ID", async () => {
+    assert.ok(appt?.id, "no appointment proposal (check 27 failed)");
+    const sel = appt.payload.unknown[0].selector;
+    const r = await http("POST", `/proposals/${appt.id}/approve`, { body: { answers: { [sel]: "3031234567" } }, timeout: 40_000 });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.status, "done", `status ${r.json.status}: ${short(r.json.payload?.error)}`);
+    assert.match(r.json.payload.confirmation, /received|submitted/i);
+    return `done: "${short(r.json.payload.confirmation, 60)}"`;
   });
 
   await check("14 still healthy", async () => {

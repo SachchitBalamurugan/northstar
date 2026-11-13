@@ -1,15 +1,16 @@
-// Workflow: one place for the day-to-day streams. Sub-tabs: Inbox · Calendar · Discover.
+// Workflow: one place for the day-to-day streams. Sub-tabs: Inbox · Calendar · Courses · Discover.
 import { AnimatePresence, motion } from "framer-motion";
-import { Inbox as InboxIcon, CalendarDays, Compass } from "lucide-react";
+import { Inbox as InboxIcon, CalendarDays, Compass, GraduationCap } from "lucide-react";
 import { useUI, type WorkflowTab } from "@/store";
-import { Heading, Lead } from "@/components/ui";
 import Inbox from "./Inbox";
+import Courses from "./Courses";
+import Discover from "./discover/Discover"; // research UI (wired to memory :7701 /discover/run)
 import CalendarApp from "./calendar/CalendarApp";
-import Discover from "./discover/Discover";
 
 const TABS: { id: WorkflowTab; label: string; Icon: typeof InboxIcon }[] = [
   { id: "inbox", label: "Inbox", Icon: InboxIcon },
   { id: "calendar", label: "Calendar", Icon: CalendarDays },
+  { id: "courses", label: "Courses", Icon: GraduationCap },
   { id: "discover", label: "Discover", Icon: Compass },
 ];
 
@@ -34,6 +35,7 @@ export default function Workflow() {
         <motion.div key={workflowTab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2, ease: "easeOut" }}>
           {workflowTab === "inbox" && <Inbox />}
           {workflowTab === "calendar" && <CalendarApp />}
+          {workflowTab === "courses" && <Courses />}
           {workflowTab === "discover" && <Discover />}
         </motion.div>
       </AnimatePresence>

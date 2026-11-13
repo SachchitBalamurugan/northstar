@@ -33,11 +33,11 @@ vi.mock("../src/fixtures.js", () => ({
 }));
 
 import {
-  decodeBody, decodeEntities, extractListUnsubscribe, htmlToText, isSignOffLine, normalizeMessage,
+  decodeBase64Url, decodeBody, decodeEntities, extractListUnsubscribe, htmlToText, isSignOffLine, normalizeMessage,
   parseAddress, stripQuotedReplies, stripSignature,
 } from "../src/gmail/parse.js";
 import { mapLimit, mergeEmails, syncGmail } from "../src/gmail/sync.js";
-import { buildReplyMime, createReplyDraft, readMockOutbox, replySubject, sendDraft, MOCK_OUTBOX_PATH } from "../src/gmail/drafts.js";
+import { buildReplyMime, encodeRaw, createReplyDraft, readMockOutbox, replySubject, sendDraft, MOCK_OUTBOX_PATH } from "../src/gmail/drafts.js";
 import { handleSendReply, summarizeEdit } from "../src/gmail/routes.js";
 import { approveProposal, registerApproveHandler } from "../src/proposals.js";
 import { getCache, newProposal, resetCache, resetProposals } from "../src/store.js";
@@ -134,6 +134,17 @@ describe("stripQuotedReplies", () => {
   it("leaves ordinary sentences starting with 'On' alone", () => {
     const t = "On Monday I will submit the form.\nThanks for the heads up.";
     expect(stripQuotedReplies(t)).toBe(t);
+    // Two prose lines that happen to span "On ... wrote:" are not an attribution line (no date, no address).
+    const prose = "On Friday we met about the project.\nHere is what she wrote:\nSubmit by Friday 5pm.";
+    expect(stripQuotedReplies(prose)).toBe(prose);
+  });
+
+  it("cuts at single-line Gmail and Apple Mail attributions, forwards and Outlook dividers", () => {
+    expect(stripQuotedReplies("Yes.\n\nOn Tue, Nov 10, 2026 at 9:00 AM Sam <sam@uni.edu> wrote:\n> when?")).toBe("Yes.");
+    expect(stripQuotedReplies("Yes.\n\nOn Nov 10, 2026, at 9:00 AM, Sam Lee wrote:\n\n> when?")).toBe("Yes.");
+    expect(stripQuotedReplies("FYI\n\n---------- Forwarded message ---------\nFrom: x")).toBe("FYI");
+    expect(stripQuotedReplies("Noted.\n________________________________\nFrom: TA\nSent: Mon")).toBe("Noted.");
+    expect(stripQuotedReplies("Answer above.\n> quoted\n>> nested\nAnswer below.")).toBe("Answer above.\nAnswer below.");
   });
 });
 
@@ -154,6 +165,18 @@ describe("stripSignature", () => {
     expect(isSignOffLine("Thanks, Sam Lee")).toBe(true);
     expect(isSignOffLine("Bestie, come over")).toBe(false);
   });
+  it("keeps real content that follows a 'Thanks!' line in a short email", () => {
+    const q = "Hi Professor,\nThanks!\nOne question: is the lab due Friday 5pm or midnight?\nSam";
+    expect(stripSignature(q)).toBe(q);
+    const s = "Thank you.\nI will submit the scholarship form by Friday at noon as requested.";
+    expect(stripSignature(s)).toBe(s);
+    // ...but a name/title/phone block after the sign-off is still removed.
+    expect(stripSignature("The exam moved to Dec 3.\n\nRegards,\nDr. Anna Lee\nAssociate Professor, CS\n555-123-4567")).toBe("The exam moved to Dec 3.");
+  });
+  it("strips quotes and signature together, as normalizeMessage does", () => {
+    const raw = "Please submit by Friday 5pm.\r\n\r\nBest,\r\nDr. Lee\r\n\r\nOn Tue, Nov 10, 2026 at 9:00 AM Sam <s@uni.edu> wrote:\r\n> when is it due?";
+    expect(stripSignature(stripQuotedReplies(raw))).toBe("Please submit by Friday 5pm.");
+  });
 });
 
 describe("headers", () => {
@@ -162,6 +185,9 @@ describe("headers", () => {
     expect(extractListUnsubscribe("<mailto:unsub@promo.com>")).toBeUndefined();
     expect(extractListUnsubscribe("http://a.com/u, <https://b.com/u>")).toBe("https://b.com/u");
     expect(extractListUnsubscribe(undefined)).toBeUndefined();
+    expect(extractListUnsubscribe("<javascript:alert(1)>, <ftp://x.com/u>")).toBeUndefined();
+    expect(extractListUnsubscribe("< https://promo.com/u?a=1,2 >")).toBe("https://promo.com/u?a=1,2");
+    expect(extractListUnsubscribe("<HTTPS://PROMO.COM/U>")).toBe("HTTPS://PROMO.COM/U");
   });
   it("parseAddress splits display name and address", () => {
     expect(parseAddress('"Lee, Anna" <Anna@Uni.edu>')).toEqual({ name: "Lee, Anna", email: "anna@uni.edu" });
@@ -260,6 +286,39 @@ describe("drafts", () => {
     const body = mime.split("\r\n\r\n")[1].trim();
     expect(Buffer.from(body, "base64").toString("utf8")).toBe("héllo");
   });
+  it("buildReplyMime is well-formed RFC 2822: CRLF only, wrapped base64, no header injection", () => {
+    const text = "Hi Professor,\n\nThanks — I'll have it in by Friday.\n".repeat(6);
+    const mime = buildReplyMime({
+      to: "a@b.c\r\nBcc: evil@x.y",
+      subject: "Re: Lab\nX-Bad: 1",
+      body: text,
+      inReplyTo: "<m1@x>\r\n",
+      references: "<m0@x>\r\n <m00@x>",
+    });
+    expect(/(^|[^\r])\n/.test(mime)).toBe(false); // no bare LF anywhere
+    const [head, ...rest] = mime.split("\r\n\r\n");
+    expect(rest.length).toBe(1); // exactly one blank line: headers, then body
+    const headers = head.split("\r\n");
+    expect(headers.some((h) => /^(Bcc|X-Bad):/i.test(h))).toBe(false);
+    expect(headers).toContain("In-Reply-To: <m1@x>");
+    expect(headers).toContain("References: <m0@x> <m00@x> <m1@x>");
+    expect(headers).toContain("MIME-Version: 1.0");
+    expect(headers).toContain("Content-Transfer-Encoding: base64");
+    const lines = rest[0].trimEnd().split("\r\n");
+    expect(lines.every((l) => l.length <= 76 && /^[A-Za-z0-9+/=]+$/.test(l))).toBe(true);
+    expect(Buffer.from(lines.join(""), "base64").toString("utf8")).toBe(text);
+    // A body whose base64 is an exact multiple of 76 chars must not gain a blank line.
+    const exact = buildReplyMime({ to: "a@b.c", subject: "x", body: "a".repeat(57) });
+    expect(exact.endsWith("\r\n\r\n")).toBe(false);
+    // No threading headers when the original Message-ID is unknown.
+    expect(buildReplyMime({ to: "a@b.c", subject: "x", body: "y" })).not.toMatch(/In-Reply-To|References/);
+  });
+  it("encodeRaw is unpadded base64url that round-trips", () => {
+    const mime = buildReplyMime({ to: "a@b.c", subject: "Re: ?>~", body: "ÿþ?>".repeat(20) });
+    const raw = encodeRaw(mime);
+    expect(/^[A-Za-z0-9_-]+$/.test(raw)).toBe(true);
+    expect(decodeBase64Url(raw)).toBe(mime);
+  });
   it("MOCK createReplyDraft/sendDraft write to the mock outbox", async () => {
     const d = await createReplyDraft({ emailId: "m1", threadId: "t1", to: "lee@uni.edu", subject: "Hi", body: "ok" });
     expect(d.draftId).toMatch(/^mock-/);
@@ -331,7 +390,7 @@ describe("send_reply approve handler", () => {
 // ---------------------------------------------------------------- auth + HTTP routes
 describe("auth + routes (MOCK, no Google client configured)", () => {
   it("getAuthUrl throws a readable error and isAuthed is false", () => {
-    expect(() => getAuthUrl()).toThrow("GOOGLE_CLIENT_ID/SECRET not set in .env");
+    expect(() => getAuthUrl()).toThrow(/GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET/);
     expect(isAuthed()).toBe(false);
   });
 
@@ -340,10 +399,18 @@ describe("auth + routes (MOCK, no Google client configured)", () => {
     await syncGmail();
     const app = await buildServer({ logger: false });
     try {
-      expect((await app.inject({ method: "GET", url: "/auth/status" })).json()).toEqual({ authed: false, mock: true });
+      const status = (await app.inject({ method: "GET", url: "/auth/status" })).json();
+      expect(status).toMatchObject({ authed: false, configured: false, mock: true, source: "fixtures" });
+      expect(status.reason).toContain("MOCK=1");
+      expect((await app.inject({ method: "GET", url: "/health" })).json()).toMatchObject({ ok: true, service: "inbox", llm: false, authed: false, configured: false, mock: true, source: "fixtures" });
+      // Not configured: 400 with a plain-language message naming both env vars.
       const url = await app.inject({ method: "GET", url: "/auth/url" });
-      expect(url.statusCode).toBe(500);
+      expect(url.statusCode).toBe(400);
+      expect(url.json()).toMatchObject({ url: "", configured: false });
       expect(url.json().error).toContain("GOOGLE_CLIENT_ID");
+      expect(url.json().error).toContain("GOOGLE_CLIENT_SECRET");
+      // Disconnect is harmless in demo mode.
+      expect((await app.inject({ method: "POST", url: "/auth/disconnect" })).json()).toMatchObject({ ok: true, revoked: false, authed: false, source: "fixtures" });
       const cb = await app.inject({ method: "GET", url: "/auth/callback" });
       expect(cb.statusCode).toBe(400);
 
@@ -354,6 +421,60 @@ describe("auth + routes (MOCK, no Google client configured)", () => {
       expect((await app.inject({ method: "GET", url: "/emails/nope" })).statusCode).toBe(404);
     } finally {
       await app.close();
+    }
+  });
+});
+
+// Runs last: reloads config/auth with a fake client id. generateAuthUrl is local string building, no network.
+describe("auth with a configured client (no network)", () => {
+  it("builds a consent URL with the loopback redirect, the minimum scopes and offline access, and persists tokens", async () => {
+    const saved = { id: process.env.GOOGLE_CLIENT_ID, secret: process.env.GOOGLE_CLIENT_SECRET, redirect: process.env.GOOGLE_REDIRECT_URI, port: process.env.PORT, inboxPort: process.env.INBOX_PORT };
+    process.env.GOOGLE_CLIENT_ID = "test-client.apps.googleusercontent.com";
+    process.env.GOOGLE_CLIENT_SECRET = "test-secret";
+    delete process.env.GOOGLE_REDIRECT_URI;
+    delete process.env.PORT;
+    delete process.env.INBOX_PORT;
+    vi.resetModules();
+    try {
+      const auth = await import("../src/google/auth.js");
+      const config = await import("../src/config.js");
+      const url = new URL(auth.getAuthUrl());
+      expect(url.origin + url.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
+      expect(url.searchParams.get("redirect_uri")).toBe("http://127.0.0.1:7702/auth/callback");
+      expect(url.searchParams.get("access_type")).toBe("offline");
+      expect(url.searchParams.get("prompt")).toBe("consent");
+      expect(url.searchParams.get("response_type")).toBe("code");
+      expect(url.searchParams.get("client_id")).toBe("test-client.apps.googleusercontent.com");
+      expect((url.searchParams.get("scope") ?? "").split(" ").sort()).toEqual([
+        "https://www.googleapis.com/auth/calendar.events",
+        "https://www.googleapis.com/auth/gmail.compose",
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/userinfo.email",
+      ]);
+      expect(url.searchParams.get("state")).toMatch(/^[0-9a-f]{32}$/);
+
+      // Token file lives under the data dir and is what isAuthed()/getAuthedClient() read.
+      expect(fs.realpathSync(config.DATA_DIR)).toBe(fs.realpathSync(env.dir));
+      expect(config.TOKENS_PATH.endsWith("tokens.json")).toBe(true);
+      expect(config.TOKENS_PATH.startsWith(config.DATA_DIR)).toBe(true);
+      expect(auth.isAuthed()).toBe(false);
+      await expect(auth.getAuthedClient()).rejects.toThrow(/Not signed in/);
+      fs.writeFileSync(config.TOKENS_PATH, JSON.stringify({ refresh_token: "r1", access_token: "a1", expiry_date: Date.now() + 3_600_000 }));
+      expect(auth.isAuthed()).toBe(true);
+      // A refreshed token set without refresh_token (what Google sends on refresh) must not drop the saved one.
+      const client = await auth.getAuthedClient(); // unexpired access token: no network call
+      client.emit("tokens", { access_token: "a2", expiry_date: Date.now() + 7_200_000 });
+      const onDisk = JSON.parse(fs.readFileSync(config.TOKENS_PATH, "utf8"));
+      expect(onDisk).toMatchObject({ refresh_token: "r1", access_token: "a2" });
+      fs.rmSync(config.TOKENS_PATH, { force: true });
+    } finally {
+      const restore = (k: string, v: string | undefined) => (v === undefined ? delete process.env[k] : (process.env[k] = v));
+      restore("GOOGLE_CLIENT_ID", saved.id);
+      restore("GOOGLE_CLIENT_SECRET", saved.secret);
+      restore("GOOGLE_REDIRECT_URI", saved.redirect);
+      restore("PORT", saved.port);
+      restore("INBOX_PORT", saved.inboxPort);
+      vi.resetModules();
     }
   });
 });

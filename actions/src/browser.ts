@@ -27,6 +27,12 @@ export function getContext(): Promise<BrowserContext> {
   return ctx;
 }
 
+/** The shared context if it is already open, else null. Never launches a browser. */
+export async function peekContext(): Promise<BrowserContext | null> {
+  if (!ctx) return null;
+  return ctx.catch(() => null);
+}
+
 /** A fresh tab. Caller owns it and should close it when the task is finished. */
 export async function newPage(): Promise<Page> {
   const c = await getContext();

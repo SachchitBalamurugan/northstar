@@ -59,6 +59,31 @@ def _messages(system: str, user: str | list) -> list[dict[str, Any]]:
     ]
 
 
+def web_research(tier: Tier, system: str, input: str) -> tuple[str, list[dict[str, str]]]:
+    """Responses API call with the built-in web search tool (used by discover.py).
+
+    Returns (answer text, citations) where citations are the `url_citation` annotations the
+    API attached: [{"url", "title"}], deduplicated, in order. Raises on any failure; the
+    caller falls back to complete() without URLs.
+    """
+    client = _get_client()
+    response = client.responses.create(
+        model=_model_for(tier),
+        input=_messages(system, input),
+        tools=[{"type": "web_search"}],
+    )
+    citations: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in getattr(response, "output", None) or []:
+        for part in getattr(item, "content", None) or []:
+            for ann in getattr(part, "annotations", None) or []:
+                url = getattr(ann, "url", None)
+                if getattr(ann, "type", "") == "url_citation" and url and url not in seen:
+                    seen.add(url)
+                    citations.append({"url": url, "title": getattr(ann, "title", "") or ""})
+    return response.output_text or "", citations
+
+
 def complete(
     tier: Tier,
     system: str,

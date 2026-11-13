@@ -40,9 +40,22 @@ const persist = () => writeJson(PROPOSALS_PATH, proposals);
 
 type NewProposal = Omit<Proposal, "id" | "agent" | "createdAt" | "status"> & Partial<Pick<Proposal, "id" | "status">>;
 
+/** The UI renders create_event from top-level { title, start, end, calendar }; the planner hands us { block }. */
+function wirePayload(type: Proposal["type"], payload: any): any {
+  const b = payload?.block;
+  if (type !== "create_event" || !b || payload.start) return payload;
+  return { title: b.title, start: b.start, end: b.end, calendar: "primary", deadlineId: b.deadlineTitle, reminderMinutes: 10, ...payload };
+}
+
+/**
+ * Store a new pending proposal. Callers pass `urgency` on the triage scale (1 = most urgent); it is stored
+ * and served on the contract scale the UI sorts by (3 = most urgent, 1 = least).
+ */
 export function newProposal(p: NewProposal): Proposal {
   const full: Proposal = {
     ...p,
+    urgency: (4 - p.urgency) as 1 | 2 | 3,
+    payload: wirePayload(p.type, p.payload),
     id: p.id ?? randomUUID(),
     agent: "inbox",
     createdAt: new Date().toISOString(),
@@ -68,8 +81,9 @@ export function setProposalStatus(id: string, status: ProposalStatus, payloadPat
   return p;
 }
 /** Drop all pending proposals of one type (e.g. before re-planning). */
+/** Drops pending proposals of a type. Syllabus deadlines (course hub) are the user's uploads, not planner output, so they stay. */
 export function dropPending(type: Proposal["type"]): void {
-  proposals = proposals.filter((p) => !(p.type === type && p.status === "pending"));
+  proposals = proposals.filter((p) => !(p.type === type && p.status === "pending" && p.payload?.source !== "syllabus"));
   persist();
 }
 /** Test helper. */

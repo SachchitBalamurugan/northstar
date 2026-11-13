@@ -1,0 +1,63 @@
+{
+  "_note": "MOCK=1 Discover items (demo data). An item is only shown when the Knowledge folder really has a line in cite.file containing one of cite.keywords; that line is quoted in `why`. deadlineInDays is relative to the run time. URLs are site home pages only.",
+  "items": [
+    {
+      "id": "disc-swe-intern-roles",
+      "title": "Summer 2027 SWE internships open to sophomores",
+      "summary": "Several large tech companies run first- and second-year internship tracks that open in the fall. Applying early matters more than a perfect resume.",
+      "whyLead": "This matches your internship hunt",
+      "cite": {"file": "goals.md", "keywords": ["internship"]},
+      "category": "opportunity",
+      "url": "https://career.berkeley.edu",
+      "sourceLabel": "Berkeley Career Engagement (demo)",
+      "deadlineInDays": 17,
+      "nextStep": "Pick 2 sophomore-friendly programmes and paste the links into Northstar to fill.",
+      "confidence": 0.82
+    },
+    {
+      "id": "disc-cs61b-tutoring",
+      "title": "Free drop-in tutoring for CS61B",
+      "summary": "The EECS honor society runs free drop-in tutoring for lower-division CS courses on weekday afternoons, which lines up with your best focus hours.",
+      "whyLead": "This could make Project 3 feel smaller",
+      "cite": {"file": "classes.md", "keywords": ["CS61B"]},
+      "category": "resource",
+      "url": "https://hkn.eecs.berkeley.edu",
+      "sourceLabel": "HKN tutoring (demo)",
+      "nextStep": "Bring one Project 3 question to a drop-in session this week.",
+      "confidence": 0.78
+    },
+    {
+      "id": "disc-robotics-scholarship",
+      "title": "Scholarships for students in robotics clubs",
+      "summary": "Some engineering scholarships favour students with hands-on robotics team experience. Most ask for a short essay and one reference.",
+      "whyLead": "Your club work could help pay for school",
+      "cite": {"file": "goals.md", "keywords": ["robotics"]},
+      "category": "opportunity",
+      "url": "https://financialaid.berkeley.edu",
+      "sourceLabel": "Financial Aid and Scholarships (demo)",
+      "deadlineInDays": 30,
+      "nextStep": "Search the scholarship list for 'robotics' and save one that fits.",
+      "confidence": 0.61
+    },
+    {
+      "id": "disc-fair-prep",
+      "title": "10-minute prep for the internship fair",
+      "summary": "A short pitch and three target companies is enough to make a career fair useful. Recruiters remember a specific question more than a resume.",
+      "whyLead": "You already plan to go",
+      "cite": {"file": "goals.md", "keywords": ["fair"]},
+      "category": "event",
+      "nextStep": "Write a 3-sentence intro: year, what you build in Cal Robotics, what role you want.",
+      "confidence": 0.74
+    },
+    {
+      "id": "disc-oa-practice",
+      "title": "How online coding assessments are scored",
+      "summary": "Most online assessments are two timed problems where partial credit counts. One timed practice run beforehand is the highest-value prep.",
+      "whyLead": "You have an assessment waiting",
+      "cite": {"file": "people.md", "keywords": ["assessment"]},
+      "category": "reading",
+      "nextStep": "Do one 25-minute timed practice problem during your 2-5pm focus window.",
+      "confidence": 0.7
+    }
+  ]
+}

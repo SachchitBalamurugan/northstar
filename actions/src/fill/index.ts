@@ -8,7 +8,8 @@ import { complete, llmAvailable } from "../llm.js";
 import { getContext, postEvent, type MemoryContext } from "../memory.js";
 import { readProfile } from "../profile.js";
 import { approveProposal, createProposal, getProposal, onApprove, parseApproveInput, updateProposal } from "../proposals.js";
-import type { Profile } from "../types.js";
+import { addRunStep, createRun, finishRun, isCancelled, RunCancelled } from "../runs.js";
+import type { Profile, Proposal } from "../types.js";
 
 // ---------- types ----------
 
@@ -55,6 +56,12 @@ const FLAG_BELOW = 0.7;
 
 /** proposalId → the tab that holds the filled form, kept open until submit/reject. */
 const openPages = new Map<string, Page>();
+
+/** True for a tab that holds a filled form still waiting for approval; closing it would lose the student's answers. */
+export function isPendingFormPage(page: Page): boolean {
+  for (const [id, p] of openPages) if (p === page && getProposal(id)?.status === "pending") return true;
+  return false;
+}
 
 // ---------- in-page scripts (strings, so tsx/esbuild helpers never leak into the browser) ----------
 
@@ -432,10 +439,16 @@ function parseUrl(raw: unknown): string | null {
   }
 }
 
-async function runFill(url: string, override: Record<string, string>) {
+/** Progress hook for fillForm. It may throw (for example RunCancelled) to abort the fill; the tab is then closed. */
+export type FillProgress = (action: string, detail: string) => void;
+
+/** Opens the form, fills what it can, and STOPS before submit. Returns the pending fill_form proposal. */
+export async function fillForm(url: string, override: Record<string, string> = {}, progress: FillProgress = () => {}): Promise<Proposal> {
+  await closeStalePages();
   const profile = { ...readProfile(), ...override } as Profile;
   const page = await newPage();
   try {
+    progress("goto", `Opening ${url}`);
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.waitForLoadState("load", { timeout: 5_000 }).catch(() => {});
     const pageTitle = (await page.title().catch(() => "")).trim() || new URL(url).hostname;
@@ -454,11 +467,13 @@ async function runFill(url: string, override: Record<string, string>) {
       pages++;
       for (const f of fields) seen.add(f.selector);
       total += fields.length;
+      progress("read", `Reading ${fields.length} field${fields.length === 1 ? "" : "s"} on page ${pages} of "${pageTitle}"`);
 
       if (fields.length) {
         const ctx = await getContext(`${pageTitle} ${fields.map((f) => f.label).join(", ")}`);
         const mapped = await mapFields(fields, profile, ctx, pageTitle);
         mapper = mapped.mapper;
+        progress("fill", `Filling page ${pages} from your profile and memory (${mapped.answers.size} of ${fields.length} answers found)`);
         for (const f of fields) {
           const a = mapped.answers.get(f.selector);
           let reason = "no confident answer in profile or memory";
@@ -498,6 +513,7 @@ async function runFill(url: string, override: Record<string, string>) {
       }
       const next = await findButton(page, "next");
       if (!next) break;
+      progress("click", `Page ${pages} is filled. Going to page ${pages + 1}`);
       await next.click();
       await next.dispose().catch(() => {});
       await page.waitForLoadState("domcontentloaded", { timeout: 5_000 }).catch(() => {});
@@ -507,6 +523,7 @@ async function runFill(url: string, override: Record<string, string>) {
     const unknown = open.filter((f) => f.required);
     const skipped = open.filter((f) => !f.required);
     const screenshot = await screenshotB64(page, true);
+    progress("verify", `Checking the filled form: ${filled.length} of ${total} fields are in`);
 
     const task = unknown.length
       ? createProposal({
@@ -548,6 +565,16 @@ async function runFill(url: string, override: Record<string, string>) {
     await page.close().catch(() => {});
     throw err;
   }
+}
+
+/** One line for the Activity screen and the final Sidekick frame. */
+export function fillSummary(p: Proposal): string {
+  const need = Array.isArray(p.payload?.unknown) ? p.payload.unknown.length : 0;
+  return (
+    `Filled ${p.payload?.filledCount ?? "?"} of ${p.payload?.totalCount ?? "?"} fields.` +
+    (need ? ` ${need} required answer${need === 1 ? "" : "s"} still need${need === 1 ? "s" : ""} you.` : "") +
+    " Waiting for your OK in Approve."
+  );
 }
 
 // ---------- submit (runs only when the fill_form proposal is approved) ----------
@@ -637,12 +664,20 @@ export default async function fillRoutes(app: FastifyInstance) {
       for (const [k, v] of Object.entries(body.profile as Record<string, unknown>))
         if (typeof v === "string" || typeof v === "number") override[k] = String(v);
     }
-    await closeStalePages();
+    const run = createRun("fill", `Fill ${url}`, url);
     try {
-      return await runFill(url, override);
+      const proposal = await fillForm(url, override, (action, detail) => {
+        if (isCancelled(run.id)) throw new RunCancelled();
+        addRunStep(run.id, action, detail);
+      });
+      finishRun(run.id, "stopped", { step: { action: "stopped", detail: fillSummary(proposal) }, proposalId: proposal.id });
+      return proposal;
     } catch (err) {
+      const msg = err instanceof Error ? err.message.split("\n")[0] : String(err);
+      finishRun(run.id, "error", { step: { action: "error", detail: msg } });
+      if (err instanceof RunCancelled) return reply.code(409).send({ error: "Cancelled" });
       req.log.error(err);
-      return reply.code(502).send({ error: err instanceof Error ? err.message.split("\n")[0] : String(err) });
+      return reply.code(502).send({ error: msg });
     }
   });
 

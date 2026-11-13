@@ -5,7 +5,8 @@ import path from "node:path";
 import { DATA_DIR } from "../config.js";
 import { getCache, listProposals, newProposal, updateCache } from "../store.js";
 import { contextToText, getContext, postEvent } from "../memory.js";
-import { complete, LLMUnavailable } from "../llm.js";
+import { complete, llmAvailable, LLMUnavailable } from "../llm.js";
+import { registerApproveHandler } from "../proposals.js";
 import type { CachedEmail, ContextResponse, Deadline, TriageResponse, TriagedEmail } from "../types.js";
 import { TriageBatchSchema, type TriageItem } from "./schemas.js";
 import { TRIAGE_SYSTEM, triageUserPrompt } from "./prompts.js";
@@ -63,8 +64,13 @@ function fromItem(item: TriageItem, email: CachedEmail): TriagedEmail {
   return {
     emailId: email.id, from: email.from, subject: email.subject, receivedAt: email.receivedAt, snippet: email.snippet,
     bucket: item.bucket, urgency: item.urgency, senderRole: item.senderRole, deadlines, asks: item.asks,
-    why: item.why.split(/(?<=[.!?])\s+/)[0] ?? item.why,
+    why: firstSentence(item.why),
   };
+}
+
+/** First sentence only, without cutting at "Prof." / "Dr." style abbreviations. */
+export function firstSentence(text: string): string {
+  return text.trim().split(/(?<!\b(?:Prof|Dr|Mr|Ms|Mrs|St|vs|etc|e\.g|i\.e)\.)(?<=[.!?])\s+(?=[A-Z"'(])/)[0] ?? text;
 }
 
 async function triageBatchWithModel(batch: CachedEmail[], ctxs: ContextResponse[], now: Date): Promise<Map<string, TriagedEmail>> {
@@ -96,19 +102,22 @@ async function triageBatchWithModel(batch: CachedEmail[], ctxs: ContextResponse[
 
 /** Classify every email (model when available, heuristics otherwise). Exported for tests. */
 export async function triageEmails(emails: CachedEmail[], now: Date = new Date()): Promise<TriagedEmail[]> {
-  const out: TriagedEmail[] = [];
-  for (let i = 0; i < emails.length; i += BATCH_SIZE) {
-    const batch = emails.slice(i, i + BATCH_SIZE);
-    const ctxs = await Promise.all(batch.map(contextFor));
-    let modelled = new Map<string, TriagedEmail>();
-    try {
-      modelled = await triageBatchWithModel(batch, ctxs, now);
-    } catch (err) {
-      if (!(err instanceof LLMUnavailable)) console.warn("[triage] model failed, using heuristics:", (err as Error).message);
-    }
-    batch.forEach((email, j) => out.push(modelled.get(email.id) ?? heuristicTriage(email, ctxs[j], now)));
-  }
-  return out;
+  const batches: CachedEmail[][] = [];
+  for (let i = 0; i < emails.length; i += BATCH_SIZE) batches.push(emails.slice(i, i + BATCH_SIZE));
+  // batches run concurrently (a 7-day inbox is a handful of calls); order of the result matches `emails`
+  const results = await Promise.all(
+    batches.map(async (batch) => {
+      const ctxs = await Promise.all(batch.map(contextFor));
+      let modelled = new Map<string, TriagedEmail>();
+      try {
+        modelled = await triageBatchWithModel(batch, ctxs, now);
+      } catch (err) {
+        if (!(err instanceof LLMUnavailable)) console.warn("[triage] model failed, using heuristics:", (err as Error).message);
+      }
+      return batch.map((email, j) => modelled.get(email.id) ?? heuristicTriage(email, ctxs[j], now));
+    }),
+  );
+  return results.flat();
 }
 
 // ---------- ordering ----------
@@ -177,6 +186,30 @@ async function writeToMemory(triage: TriageResponse): Promise<void> {
 
 // ---------- unsubscribe proposals ----------
 
+/** First http(s) URL in a List-Unsubscribe value ("<mailto:..>, <https://..>" or a bare URL); mailto-only => undefined. */
+export function httpUrl(header: string | undefined): string | undefined {
+  for (const part of (header ?? "").split(",")) {
+    const raw = part.trim().replace(/^<|>$/g, "");
+    try {
+      const u = new URL(raw);
+      if (u.protocol === "http:" || u.protocol === "https:") return u.toString();
+    } catch { /* not a URL */ }
+  }
+  return undefined;
+}
+
+// Approving an unsubscribe only records the decision; payload.url is there for Machine 4's Sidekick to act on.
+registerApproveHandler("unsubscribe", async (p) => {
+  const url = httpUrl(p.payload?.url);
+  if (!url) throw new Error("unsubscribe payload needs an http(s) url");
+  await postEvent({
+    source: "gmail", kind: "preference",
+    text: `Approved unsubscribing from ${p.payload?.senderName ?? p.payload?.sender ?? "a sender"}`,
+    tags: ["unsubscribe"], refs: { url },
+  });
+  return { confirmation: "Marked for unsubscribe" };
+});
+
 function proposeUnsubscribes(emails: CachedEmail[], triaged: TriagedEmail[]): void {
   const promoIds = new Set(triaged.filter((t) => t.senderRole === "promo" || t.bucket === "ignore").map((t) => t.emailId));
   const bySender = new Map<string, CachedEmail[]>();
@@ -193,12 +226,13 @@ function proposeUnsubscribes(emails: CachedEmail[], triaged: TriagedEmail[]): vo
       name: list[0].from,
       unopened: list.filter((e) => e.opened === false),
       everOpened: list.some((e) => e.opened !== false),
-      url: list.find((e) => e.listUnsubscribe)?.listUnsubscribe,
+      url: list.map((e) => httpUrl(e.listUnsubscribe)).find(Boolean),
     }))
     .filter((c) => c.url && !c.everOpened && c.unopened.length > 0)
     .filter((c) => !existing.some((p) => (p.payload?.sender ?? "").toLowerCase() === c.sender))
     .sort((a, b) => b.unopened.length - a.unopened.length)
-    .slice(0, MAX_NEW_UNSUBSCRIBE_PER_RUN);
+    // keep the Approve queue short: never more than 3 unsubscribe cards waiting at once
+    .slice(0, Math.max(0, MAX_NEW_UNSUBSCRIBE_PER_RUN - existing.filter((p) => p.status === "pending").length));
   for (const c of candidates) {
     newProposal({
       type: "unsubscribe",
@@ -215,6 +249,10 @@ function proposeUnsubscribes(emails: CachedEmail[], triaged: TriagedEmail[]): vo
 /** Run the full triage over the cached emails. Used by GET /triage, POST /triage/run and the sync loop. */
 export async function runTriage(now: Date = new Date()): Promise<TriageResponse> {
   const emails = getCache().emails;
+  // First run with a model: the calls take a while, so serve a rules-based triage until they land.
+  if (!getCache().triage && llmAvailable()) {
+    updateCache({ triage: buildResponse(emails.map((e) => heuristicTriage(e, undefined, now))), triagedAt: now.toISOString() });
+  }
   const triaged = await triageEmails(emails, now);
   const triage = buildResponse(triaged);
   await writeToMemory(triage);

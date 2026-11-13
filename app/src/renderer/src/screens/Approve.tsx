@@ -5,6 +5,8 @@ import type { Proposal } from "@contracts/types";
 import { getPendingProposals, approve, reject } from "@/api";
 import { useUI } from "@/store";
 import { Heading, Lead, Eyebrow, Window, NumberedList, PrimaryButton, SecondaryButton, TextLink, Why, Chip, relTime, clock } from "@/components/ui";
+import { approveEdited } from "@/assistApi";
+import RefineControls from "@/components/RefineControls";
 
 const ICONS: Record<Proposal["type"], LucideIcon> = {
   send_reply: Send, create_event: CalendarPlus, fill_form: FileText,
@@ -19,7 +21,10 @@ const LABELS: Record<Proposal["type"], string> = {
 type Field = { label: string; value: string; confidence?: number; selector?: string; ask?: boolean };
 type Answers = Record<string, string>;
 
-function Preview({ p, answers, onAnswer }: { p: Proposal; answers: Answers; onAnswer: (selector: string, value: string) => void }) {
+function Preview({ p, answers, onAnswer, body, onBody }: {
+  p: Proposal; answers: Answers; onAnswer: (selector: string, value: string) => void;
+  /** The reply text after the user refined it (send_reply only). */ body?: string; onBody?: (text: string) => void;
+}) {
   const pl = p.payload ?? {};
   if (p.type === "send_reply") {
     return (
@@ -29,9 +34,13 @@ function Preview({ p, answers, onAnswer }: { p: Proposal; answers: Answers; onAn
           <p><span className="inline-block w-16">Subject</span><span className="text-muted">{pl.subject}</span></p>
         </div>
         <div className="relative max-h-[10rem] overflow-hidden">
-          <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-warm">{pl.body}</p>
+          <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-warm">{body ?? pl.body}</p>
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-raised to-transparent" />
         </div>
+        {onBody && typeof pl.body === "string" && (
+          <RefineControls className="mt-4 border-t-[0.8px] border-line pt-4" text={body ?? pl.body}
+            context={pl.subject ? `Reply email. Subject: ${pl.subject}` : undefined} onChange={onBody} />
+        )}
       </div>
     );
   }
@@ -83,6 +92,12 @@ export default function Approve() {
   const [dir, setDir] = useState(1);
   const [answers, setAnswers] = useState<Record<string, Answers>>({});
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  // Reply bodies the user refined (by proposal id). When set, this is the text that gets sent on approve.
+  const [bodies, setBodies] = useState<Record<string, string>>({});
+  const send = useCallback((p: Proposal, typed?: Answers) => {
+    const body = bodies[p.id];
+    return p.type === "send_reply" && body !== undefined && body.trim() && body !== p.payload?.body ? approveEdited(p, body) : approve(p, typed);
+  }, [bodies]);
 
   useEffect(() => {
     getPendingProposals().then((ps) => { setItems(ps); setPendingCount(ps.length); });
@@ -107,7 +122,7 @@ export default function Approve() {
       const title = current.title;
       const typed = Object.fromEntries(Object.entries(answers[current.id] ?? {}).filter(([, v]) => v.trim()));
       // The service answers with the finished proposal; say so if the action did not go through.
-      approve(current, Object.keys(typed).length ? typed : undefined).then((res) => {
+      send(current, Object.keys(typed).length ? typed : undefined).then((res) => {
         if (res.status === "failed") setNotice({ ok: false, text: `Couldn't finish "${title}". ${res.payload?.error ?? ""}`.trim() });
         else if (res.payload?.confirmation) setNotice({ ok: true, text: `Done: ${title}` });
         // A submitted form also settles its "answer these questions" card.
@@ -115,12 +130,12 @@ export default function Approve() {
       });
     } else reject(current);
     remove([current.id]);
-  }, [current, remove, answers]);
+  }, [current, remove, answers, send]);
 
   const approveLowRisk = () => {
     if (!items) return;
     const low = items.filter((p) => p.urgency === 1 || p.type === "create_event");
-    low.forEach((p) => approve(p));
+    low.forEach((p) => send(p));
     setDir(1);
     remove(low.map((p) => p.id));
   };
@@ -191,6 +206,7 @@ export default function Approve() {
             <h2 className="display mb-3 text-[26px] leading-[1.15] text-ink">{current.title}</h2>
             <Why>{current.why}</Why>
             <Preview p={current} answers={answers[current.id] ?? {}}
+              body={bodies[current.id]} onBody={(t) => setBodies((b) => ({ ...b, [current.id]: t }))}
               onAnswer={(sel, v) => setAnswers((a) => ({ ...a, [current.id]: { ...(a[current.id] ?? {}), [sel]: v } }))} />
             <div className="mt-8 flex items-center justify-end gap-3">
               <SecondaryButton onClick={() => act("skip")}>Skip</SecondaryButton>

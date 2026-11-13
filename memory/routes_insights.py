@@ -14,11 +14,11 @@ class DigestRequest(BaseModel):
     full: bool = False
 
 
-@router.get("/insights", response_model=models.InsightsResponse)
+@router.get("/insights", response_model=models.InsightsResponse, response_model_exclude_none=True)
 def get_insights() -> models.InsightsResponse:
     return insights.get_insights()
 
 
-@router.post("/digest/run", response_model=models.InsightsResponse)
+@router.post("/digest/run", response_model=models.InsightsResponse, response_model_exclude_none=True)
 def run_digest(body: DigestRequest | None = None) -> models.InsightsResponse:
     return insights.run_digest(full=bool(body and body.full))

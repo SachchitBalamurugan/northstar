@@ -125,18 +125,94 @@ function results(topic: Topic, opts: ResearchOptions): Omit<DiscoverResult, "id"
   return list;
 }
 
-/** Start a research run. Calls `onEvent` as the run streams. Returns a cancel function. */
+/* ------------------------------------------------------------------ */
+/* Real backend: memory service POST /discover/run {focus}             */
+/* (MOCK=0: OpenAI web research over the student's memory; MOCK=1: fixtures) */
+/* ------------------------------------------------------------------ */
+const MEMORY = "http://127.0.0.1:7701";
+interface BackendItem { id: string; title: string; summary: string; why: string; category: "opportunity" | "resource" | "event" | "reading" | "idea";
+  url?: string; sourceLabel?: string; deadline?: string; nextStep?: string; confidence?: number }
+
+async function memoryOnline(): Promise<boolean> {
+  try { return (await fetch(`${MEMORY}/health`, { signal: AbortSignal.timeout(1500) })).ok; } catch { return false; }
+}
+
+async function runBackend(query: string, opts: ResearchOptions): Promise<BackendItem[]> {
+  const where = opts.where === "campus" ? " near campus" : opts.where === "online" ? " (online)" : "";
+  const when = opts.when === "week" ? " this week" : opts.when === "month" ? " this month" : "";
+  const r = await fetch(`${MEMORY}/discover/run`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ focus: `${query}${when}${where}` }), signal: AbortSignal.timeout(180_000), // web research can take a while
+  });
+  if (!r.ok) throw new Error(`discover/run ${r.status}`);
+  const body = await r.json();
+  return (body.items ?? []) as BackendItem[];
+}
+
+function mapItem(it: BackendItem, agentId: string): DiscoverResult {
+  const kind: ResultKind = it.category === "event" ? "event" : it.category === "opportunity" ? "opportunity" : "article";
+  const isEvent = kind === "event" && !!it.deadline;
+  let source = it.sourceLabel ?? "";
+  if (!source && it.url) { try { source = new URL(it.url).hostname.replace(/^www\./, ""); } catch { /* ignore */ } }
+  return {
+    id: it.id, kind, title: it.title, summary: it.nextStep ? `${it.summary} Next step: ${it.nextStep}` : it.summary,
+    source: source || "Northstar research", url: it.url ?? "",
+    start: isEvent ? it.deadline : undefined, end: isEvent ? new Date(Date.parse(it.deadline!) + 60 * 60e3).toISOString() : undefined,
+    deadline: kind === "opportunity" ? it.deadline : undefined,
+    why: it.why, score: it.confidence ?? 0.7, agentId, tags: [it.category],
+  };
+}
+
+/** Start a research run. Calls `onEvent` as the run streams. Returns a cancel function.
+ *  Uses the real memory-service research when it's running; otherwise the built-in simulation. */
 export function startResearch(query: string, opts: ResearchOptions, onEvent: (e: DiscoverEvent) => void): () => void {
   let cancelled = false;
   const t0 = Date.now();
+  const emit = (e: DiscoverEvent) => { if (!cancelled) onEvent(e); };
   (async () => {
+    if (!(await memoryOnline())) { if (!cancelled) simulate(); return; }
+    const topic = topicOf(query);
+    const agents = AGENTS[topic];
+    const filters = [opts.when === "week" ? "This week" : opts.when === "month" ? "This month" : "Any time", opts.where === "campus" ? "Near campus" : opts.where === "online" ? "Online" : "Anywhere"];
+    emit({ type: "plan", intent: `Researching: ${query}`, agents, filters });
+    const research = runBackend(query, opts);
+    // Show the agents working while the real research runs (steps + sources only; results come from the backend).
+    const srcs = SOURCES[topic];
+    let settled = false; research.finally(() => { settled = true; });
+    for (let i = 0; i < 3 && !settled && !cancelled; i++) {
+      for (const a of agents) {
+        await sleep(350 + Math.random() * 350); if (cancelled || settled) break;
+        const steps = STEPS[a.id] ?? [];
+        emit({ type: "step", agentId: a.id, text: steps[i] ?? "Still searching…" });
+        emit({ type: "source", agentId: a.id, domain: srcs[(i + agents.indexOf(a)) % srcs.length] });
+      }
+    }
+    for (const a of agents) emit({ type: "step", agentId: a.id, text: settled ? "Reading results" : "Waiting on web research…" });
+    let items: BackendItem[];
+    try { items = await research; } catch { if (!cancelled) { emit({ type: "step", agentId: agents[0].id, text: "Research service failed; showing offline results" }); simulate(true); } return; }
+    if (cancelled) return;
+    const counts: Record<string, number> = {};
+    for (const [i, it] of items.entries()) {
+      const agentId = agents[i % agents.length].id; counts[agentId] = (counts[agentId] ?? 0) + 1;
+      await sleep(180); if (cancelled) return;
+      emit({ type: "result", result: mapItem(it, agentId) });
+    }
+    for (const a of agents) emit({ type: "agent_done", agentId: a.id, found: counts[a.id] ?? 0 });
+    emit({ type: "done", total: items.length, ms: Date.now() - t0 });
+  })();
+
+  function simulate(skipPlan = false) { void simulateRun(query, opts, emit, () => cancelled, skipPlan, t0); }
+  return () => { cancelled = true; };
+}
+
+/** Offline simulation of a research run (used when the memory service isn't running or fails). */
+async function simulateRun(query: string, opts: ResearchOptions, onEvent: (e: DiscoverEvent) => void, isCancelled: () => boolean, skipPlan: boolean, t0: number): Promise<void> {
     const topic = topicOf(query);
     const agents = AGENTS[topic];
     const filters = [opts.when === "week" ? "This week" : opts.when === "month" ? "This month" : "Any time", opts.where === "campus" ? "Near campus" : opts.where === "online" ? "Online" : "Anywhere"];
     const intent = topic === "career" ? "Career events and opportunities that fit your schedule"
       : topic === "fun" ? "Fun things to do when you're free" : topic === "study" ? "Study help for your current classes" : `Research: ${query}`;
-    await sleep(500); if (cancelled) return;
-    onEvent({ type: "plan", intent, agents, filters });
+    if (!skipPlan) { await sleep(500); if (isCancelled()) return; onEvent({ type: "plan", intent, agents, filters }); }
 
     const pool = results(topic, opts);
     const srcs = SOURCES[topic];
@@ -157,14 +233,12 @@ export function startResearch(query: string, opts: ResearchOptions, onEvent: (e:
     while (queues.some(q => q.length)) {
       for (const q of queues) {
         const e = q.shift(); if (!e) continue;
-        await sleep(220 + Math.random() * 380); if (cancelled) return;
+        await sleep(220 + Math.random() * 380); if (isCancelled()) return;
         if (e.type === "result") total++;
         onEvent(e);
       }
     }
     onEvent({ type: "done", total, ms: Date.now() - t0 });
-  })();
-  return () => { cancelled = true; };
 }
 
 /** Markdown for "Save as file". */

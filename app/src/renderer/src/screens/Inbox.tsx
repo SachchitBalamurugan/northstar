@@ -4,6 +4,9 @@ import { Inbox as InboxIcon, ChevronDown } from "lucide-react";
 import type { Email, Proposal, Triage } from "@contracts/types";
 import { getTriage, draftReply, approve } from "@/api";
 import { Heading, Lead, Eyebrow, Window, PrimaryButton, TextLink, Why, Chip, relTime } from "@/components/ui";
+import { approveEdited } from "@/assistApi";
+import GoogleConnect from "@/components/GoogleConnect";
+import RefineControls from "@/components/RefineControls";
 
 const TWO_DAYS = 2 * 24 * 36e5;
 
@@ -35,6 +38,8 @@ export default function Inbox() {
   const [drafts, setDrafts] = useState<Record<string, Proposal | "loading">>({});
   const [done, setDone] = useState<Record<string, boolean>>({});
   const [showFyi, setShowFyi] = useState(false);
+  // Reply bodies the user refined (by email id). When set, this is the text that gets sent on approve.
+  const [edited, setEdited] = useState<Record<string, string>>({});
 
   useEffect(() => { getTriage().then(setTriage); }, []);
 
@@ -50,7 +55,9 @@ export default function Inbox() {
   const onApprove = (id: string) => {
     const p = drafts[id];
     if (!p || p === "loading") return;
-    approve(p);
+    const body = edited[id];
+    if (body !== undefined && body.trim() && body !== p.payload?.body) approveEdited(p, body);
+    else approve(p);
     setDone((d) => ({ ...d, [id]: true }));
     setOpenId(null);
   };
@@ -60,6 +67,7 @@ export default function Inbox() {
 
   return (
     <div className="max-w-[860px]">
+      <GoogleConnect onSynced={() => { getTriage().then(setTriage); }} />
       <Eyebrow className="mb-4">Inbox</Eyebrow>
       <Heading size="lg" className="mb-6">Only what<br />needs <span className="text-glow">you.</span></Heading>
       {triage && (
@@ -93,8 +101,12 @@ export default function Inbox() {
                                 <>
                                   <div className="mb-3"><Why>{d.why}</Why></div>
                                   <div className="max-h-[10rem] overflow-auto">
-                                    <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-warm">{d.payload?.body}</p>
+                                    <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-warm">{edited[e.id] ?? d.payload?.body}</p>
                                   </div>
+                                  {typeof d.payload?.body === "string" && (
+                                    <RefineControls className="mt-4" text={edited[e.id] ?? d.payload.body} context={`Reply to ${e.from}: ${e.subject}`}
+                                      onChange={(t) => setEdited((m) => ({ ...m, [e.id]: t }))} />
+                                  )}
                                   <div className="mt-5 flex items-center gap-6">
                                     <PrimaryButton onClick={() => onApprove(e.id)}>Approve draft</PrimaryButton>
                                     <TextLink onClick={() => setOpenId(null)}>Not now</TextLink>
