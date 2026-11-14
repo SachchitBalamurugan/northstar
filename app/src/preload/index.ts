@@ -27,6 +27,8 @@ const api = {
   askToggle: () => ipcRenderer.send("ns:ask-toggle"),
   askHide: () => ipcRenderer.send("ns:ask-hide"),
   askResize: (height: number) => ipcRenderer.send("ns:ask-resize", height),
+  /** A running task needs an answer: bring the Ask window back (and flash a notification if it was hidden). */
+  askShow: (title?: string) => ipcRenderer.send("ns:ask-show", title ?? ""),
   onAskShown: (cb: () => void) => { ipcRenderer.on("ns:ask-shown", cb); return () => ipcRenderer.removeListener("ns:ask-shown", cb); },
   onAskBlur: (cb: () => void) => { ipcRenderer.on("ns:ask-blur", cb); return () => ipcRenderer.removeListener("ns:ask-blur", cb); },
   // Maximize: open the main window on a given screen

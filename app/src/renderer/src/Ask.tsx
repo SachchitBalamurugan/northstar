@@ -3,11 +3,11 @@
 // In Electron it is its own frameless window (#ask). In a plain browser it renders centered on a dark page.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
-import { Check, Loader2, Maximize2 } from "lucide-react";
-import { runSidekick } from "@/api";
+import { Check, Loader2, Maximize2, Square } from "lucide-react";
+import { answerCheckpoint, cancelRun, runSidekick } from "@/api";
 import { useUI, type Screen } from "@/store";
-import { LogoMark, PrimaryButton, TextLink } from "@/components/ui";
-import type { AskStep } from "@/local-types";
+import { LogoMark, PrimaryButton, SecondaryButton, TextLink } from "@/components/ui";
+import type { AskStep, TaskCheckpoint } from "@/local-types";
 
 const SUGGESTIONS = ["Fill my Stripe application", "Unsubscribe from promo emails", "Find the CS 101 syllabus"];
 const EDGE = "var(--accent)";
@@ -35,21 +35,36 @@ export default function Ask() {
   const [steps, setSteps] = useState<AskStep[]>([]);
   const [running, setRunning] = useState(false);
   const [ended, setEnded] = useState<"done" | "stopped" | null>(null);
+  const [cp, setCp] = useState<TaskCheckpoint | null>(null);
+  const [answer, setAnswer] = useState("");
+  const [sending, setSending] = useState(false);
+  const liveRun = useRef<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const card = useRef<HTMLDivElement>(null);
   const runId = useRef(0);
   const busy = useRef(false);
   busy.current = running;
 
-  const reset = () => { runId.current++; setText(""); setSteps([]); setRunning(false); setEnded(null); input.current?.focus(); };
+  const reset = () => { runId.current++; setText(""); setSteps([]); setRunning(false); setEnded(null); setCp(null); input.current?.focus(); };
 
   const run = async (instruction: string) => {
     const t = instruction.trim(); if (!t || running) return;
     const id = ++runId.current;
     let last: AskStep | undefined;
-    setText(t); setSteps([]); setRunning(true); setEnded(null);
-    await runSidekick(t, s => { if (runId.current === id) { last = s; setSteps(prev => [...prev, s]); } });
-    if (runId.current === id) { setRunning(false); setEnded(last?.action === "stopped" ? "stopped" : "done"); }
+    setText(t); setSteps([]); setRunning(true); setEnded(null); setCp(null); liveRun.current = null;
+    await runSidekick(t, raw => {
+      const s = raw as AskStep;
+      if (runId.current !== id) return;
+      if (s.runId) liveRun.current = s.runId;
+      if (s.checkpoint) {
+        setCp(s.checkpoint); setAnswer("");
+        window.northstar?.askShow(s.checkpoint.title);
+        return;
+      }
+      setCp(null);
+      last = s; setSteps(prev => [...prev, s]);
+    });
+    if (runId.current === id) { setRunning(false); setCp(null); setEnded(last?.action === "stopped" ? "stopped" : "done"); }
   };
 
   // Typing over a finished run starts a fresh ask.
@@ -82,12 +97,22 @@ export default function Ask() {
     return () => { window.removeEventListener("focus", focus); window.removeEventListener("keydown", onKey); offShown?.(); offBlur?.(); };
   }, []);
 
+  const decide = async (decision: string) => {
+    if (!cp || sending) return;
+    if (decision === "answer" && !answer.trim()) return;
+    setSending(true);
+    const ok = await answerCheckpoint(cp.id, decision, decision === "answer" ? answer.trim() : undefined);
+    setSending(false);
+    if (ok) setCp(null);
+  };
+  const stop = () => { if (liveRun.current) void cancelRun(liveRun.current); };
+
   const shown = steps.slice(-5);
   const idleEmpty = !text && steps.length === 0 && !running;
 
   const panel = (
     <motion.div ref={card} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, ease: "easeOut" }}
-      className={`no-drag flex max-h-[340px] w-full flex-col overflow-hidden rounded-[18px] border-[0.8px] border-line bg-surface ${inElectron ? "" : "shadow-[0_24px_80px_rgba(0,0,0,0.5)]"}`}>
+      className={`no-drag flex max-h-[520px] w-full flex-col overflow-hidden rounded-[18px] border-[0.8px] border-line bg-surface ${inElectron ? "" : "shadow-[0_24px_80px_rgba(0,0,0,0.5)]"}`}>
       <div className="relative shrink-0">
         <div className="flex h-[74px] items-center gap-3 pl-5 pr-3">
           <LogoMark size={22} />
@@ -137,6 +162,14 @@ export default function Ask() {
         <p className="flex items-center gap-3 px-5 py-4 text-[14px] text-muted"><Loader2 size={15} className="animate-spin text-accent" />Starting…</p>
       )}
 
+      {cp && <CheckpointCard cp={cp} answer={answer} setAnswer={setAnswer} sending={sending} decide={decide} />}
+
+      {running && !cp && steps.length > 0 && (
+        <div className="flex shrink-0 justify-end border-t-[0.8px] border-line px-5 py-2">
+          <TextLink onClick={stop} className="inline-flex items-center gap-1.5 text-[12px]"><Square size={10} strokeWidth={2.5} />Stop</TextLink>
+        </div>
+      )}
+
       {ended === "stopped" && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}
           className="flex shrink-0 items-center justify-between gap-4 border-t-[0.8px] border-line py-3.5 pl-5 pr-6">
@@ -159,5 +192,63 @@ export default function Ask() {
     <div className="flex min-h-full justify-center bg-bg px-4 pt-[16vh]">
       <div className="w-[520px] max-w-full">{panel}</div>
     </div>
+  );
+}
+
+const CP_LABEL: Record<TaskCheckpoint["kind"], string> = {
+  plan: "Plan · approve once",
+  submit: "Final step",
+  payment: "Payment",
+  signin: "Sign-in needed",
+  question: "Quick question",
+};
+
+function CheckpointCard({ cp, answer, setAnswer, sending, decide }: {
+  cp: TaskCheckpoint; answer: string; setAnswer: (v: string) => void; sending: boolean; decide: (d: string) => void;
+}) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}
+      className="shrink-0 overflow-y-auto border-t-[0.8px] border-line px-5 pt-3.5 pb-4">
+      <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-accent">{CP_LABEL[cp.kind]}</p>
+      <p className="mt-1.5 text-[15px] leading-snug text-ink">{cp.title}</p>
+      {cp.steps && cp.steps.length > 0 && (
+        <ol className="mt-2.5 space-y-1">
+          {cp.steps.map((s, i) => (
+            <li key={i} className="flex gap-2.5 text-[13px] leading-5 text-muted">
+              <span className="w-4 shrink-0 font-mono text-[11px] tabular-nums leading-5 text-faint">{i + 1}</span><span>{s}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      {cp.detail && <p className="mt-2 text-[12.5px] leading-snug text-faint">{cp.detail}</p>}
+      {cp.kind === "question" && (
+        <textarea autoFocus value={answer} onChange={e => setAnswer(e.target.value)} rows={2}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); decide("answer"); } }}
+          placeholder="Type your answer" className="mt-2.5 w-full resize-none rounded-[10px] border-[0.8px] border-line bg-raised px-3 py-2 text-[14px] text-ink outline-none placeholder:text-faint focus:border-accent" />
+      )}
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+        {cp.kind === "plan" && <>
+          <TextLink onClick={() => decide("cancel")} disabled={sending} className="mr-auto text-[13px]">Cancel</TextLink>
+          {cp.finalAction
+            ? <>
+                <SecondaryButton onClick={() => decide("run")} disabled={sending} className="h-9 px-3.5 text-[13px]">Run, ask before submit</SecondaryButton>
+                <PrimaryButton onClick={() => decide("run_submit")} disabled={sending} className="h-9 px-3.5 text-[13px]">Run &amp; submit</PrimaryButton>
+              </>
+            : <PrimaryButton autoFocus onClick={() => decide("run")} disabled={sending} className="h-9 px-4 text-[13px]">Run</PrimaryButton>}
+        </>}
+        {(cp.kind === "submit" || cp.kind === "payment") && <>
+          <SecondaryButton onClick={() => decide("skip")} disabled={sending} className="h-9 px-3.5 text-[13px]">Not now</SecondaryButton>
+          <PrimaryButton autoFocus onClick={() => decide("approve")} disabled={sending} className="h-9 px-4 text-[13px]">Approve</PrimaryButton>
+        </>}
+        {cp.kind === "signin" && <>
+          <SecondaryButton onClick={() => decide("skip")} disabled={sending} className="h-9 px-3.5 text-[13px]">Stop</SecondaryButton>
+          <PrimaryButton onClick={() => decide("continue")} disabled={sending} className="h-9 px-4 text-[13px]">I signed in, continue</PrimaryButton>
+        </>}
+        {cp.kind === "question" && <>
+          <SecondaryButton onClick={() => decide("skip")} disabled={sending} className="h-9 px-3.5 text-[13px]">Skip</SecondaryButton>
+          <PrimaryButton onClick={() => decide("answer")} disabled={sending || !answer.trim()} className="h-9 px-4 text-[13px]">Send</PrimaryButton>
+        </>}
+      </div>
+    </motion.div>
   );
 }

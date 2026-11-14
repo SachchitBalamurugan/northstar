@@ -14,13 +14,16 @@ import { classifyAction, needsDesktop, type ActionTarget } from "./safety.js";
 import { desktopAllowed, mockDesktop, runDesktopAgent } from "../desktop/agent.js";
 import { MOCK } from "../config.js";
 import { describeEl, elLocator, renderSnapshot, takeSnapshot, type SnapEl } from "./snapshot.js";
+import { runTask, type TaskFrame } from "../agent.js";
+import { bridgeConnected } from "../bridge.js";
 
 const MAX_STEPS = 25;
 const MOCK_DELAY_MS = 150;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type Frame = SidekickStep & { proposalId?: string };
+type Frame = SidekickStep & { proposalId?: string; checkpoint?: TaskFrame["checkpoint"] };
 interface Run {
+  id: string;
   instruction: string;
   /** Emits one frame; step numbers are assigned automatically. */
   emit: (f: Omit<Frame, "step"> & { runStatus?: "done" | "stopped" | "error"; runDetail?: string }) => void;
@@ -351,12 +354,14 @@ export default async function sidekickRoutes(app: FastifyInstance) {
     raw.on("error", () => {
       gone = true;
     });
-    const fillUrl = needsDesktop(instruction) || wantsDesktop ? null : fillTarget(instruction, !llmAvailable());
+    // With the Chrome extension connected, forms are filled by the task agent in the student's own tab.
+    const fillUrl = needsDesktop(instruction) || wantsDesktop || (bridgeConnected() && llmAvailable()) ? null : fillTarget(instruction, !llmAvailable());
     const record = createRun(fillUrl ? "fill" : "sidekick", instruction, fillUrl ?? undefined);
     const runId = record.id;
     let step = 0;
     let final = false;
     const run: Run = {
+      id: runId,
       instruction,
       closed: () => isCancelled(runId),
       emit: (f) => {
@@ -365,6 +370,7 @@ export default async function sidekickRoutes(app: FastifyInstance) {
         const frame: Frame & { runId: string } = { step: ++step, ...rest, runId };
         if (frame.screenshot === undefined) delete frame.screenshot;
         if (frame.proposalId === undefined) delete frame.proposalId;
+        if (frame.checkpoint === undefined) delete frame.checkpoint;
         if (f.action === "done" || f.action === "stopped" || f.action === "error") {
           final = true;
           finishRun(runId, runStatus ?? f.action, { step: { action: runStatus ?? f.action, detail: runDetail ?? f.detail }, proposalId: f.proposalId });
@@ -387,7 +393,7 @@ export default async function sidekickRoutes(app: FastifyInstance) {
       else if (useDesktop) outcome = await runDesktopAgent(run);
       else if (wantsDesktop || needsDesktop(instruction)) outcome = await desktopFallback(run);
       else if (fillUrl) outcome = await runFillTask(run, fillUrl);
-      else if (llmAvailable()) outcome = await runAgent(run);
+      else if (llmAvailable()) outcome = await runTask(run);
       else if (/unsubscribe/i.test(instruction)) outcome = await mockFixture(run, "unsubscribe");
       else if (/syllabus/i.test(instruction)) outcome = await mockFixture(run, "syllabus");
       else outcome = await mockCanned(run);

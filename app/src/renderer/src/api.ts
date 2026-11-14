@@ -261,7 +261,8 @@ async function fillViaActions(instruction: string, onStep: (s: SidekickStep) => 
 
 export async function runSidekick(instruction: string, onStep: (s: SidekickStep) => void): Promise<void> {
   if (isEmailRequest(instruction)) return composeViaInbox(instruction, onStep);
-  if (isFillRequest(instruction)) return fillViaActions(instruction, onStep);
+  // With the Chrome extension connected, the task agent fills forms in the student's own tab.
+  if (isFillRequest(instruction) && !(await bridgeStatus()).connected) return fillViaActions(instruction, onStep);
   if (isCalendarRequest(instruction)) return calendarViaInbox(instruction, onStep);
   try {
     const r = await fetch(SERVICES.actions + "/sidekick", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instruction }) });
@@ -279,6 +280,25 @@ export async function runSidekick(instruction: string, onStep: (s: SidekickStep)
     const steps = ["Opening the browser", "Reading the page", `Working on: ${instruction}`, "Filling 14 of 15 fields", "Paused before submit. Waiting for your OK"];
     for (let i = 0; i < steps.length; i++) { await new Promise(r => setTimeout(r, 700)); onStep({ step: i + 1, action: i === steps.length - 1 ? "stopped" : "act", detail: steps[i] }); }
   }
+}
+
+/** Is the Northstar Bridge Chrome extension connected (tasks run in the student's own Chrome)? */
+export async function bridgeStatus(): Promise<{ connected: boolean; version: string | null }> {
+  try {
+    const r = await fetch(SERVICES.actions + "/bridge/status", { signal: AbortSignal.timeout(1500) });
+    if (r.ok) return await r.json();
+  } catch { /* offline */ }
+  return { connected: false, version: null };
+}
+
+/** Answer a running task's checkpoint from the popup (plan approval, final submit, sign-in, question). */
+export async function answerCheckpoint(id: string, decision: string, answer?: string): Promise<boolean> {
+  try {
+    const r = await fetch(SERVICES.actions + `/checkpoints/${encodeURIComponent(id)}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision, answer }),
+    });
+    return r.ok;
+  } catch { return false; }
 }
 
 // actions :7703 — automation runs (what is running now and what ran recently), newest first

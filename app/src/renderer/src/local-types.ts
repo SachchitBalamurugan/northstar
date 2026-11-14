@@ -2,7 +2,13 @@
 import type { SidekickStep } from "@contracts/types";
 
 /** A Sidekick stream step. The actions service may attach the run and (when it pauses) the proposal to approve. */
-export type AskStep = SidekickStep & { runId?: string; proposalId?: string };
+export interface TaskCheckpoint {
+  id: string;
+  kind: "plan" | "submit" | "payment" | "signin" | "question";
+  title: string; detail: string;
+  steps?: string[]; finalAction?: string | null;
+}
+export type AskStep = SidekickStep & { runId?: string; proposalId?: string; checkpoint?: TaskCheckpoint };
 
 export interface RunStep { step: number; action: string; detail: string; at: string }
 export interface Run {

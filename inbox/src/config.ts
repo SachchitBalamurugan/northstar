@@ -36,6 +36,9 @@ export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/gmail.compose",
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/userinfo.email",
+  // Read-only Google Docs for the task agent: find docs by name, read their text.
+  "https://www.googleapis.com/auth/drive.metadata.readonly",
+  "https://www.googleapis.com/auth/documents.readonly",
 ];
 
 /** True when GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are both set. */

@@ -17,6 +17,7 @@ import { composeRoutes } from "./gmail/compose.js";
 import { briefRoutes, regenerateBrief } from "./triage/brief.js";
 import { authStatus } from "./google/status.js";
 import { followupRoutes, scanFollowups } from "./followups.js";
+import { docsRoutes } from "./google/docs.js";
 
 export interface SyncResult {
   /** "fixtures" with MOCK=1 or while Google is not configured / signed in; "google" otherwise. */
@@ -116,5 +117,6 @@ export async function buildServer(opts: { logger?: boolean } = {}) {
   await app.register(composeRoutes);
   await app.register(briefRoutes);
   await app.register(followupRoutes);
+  await app.register(docsRoutes); // GET /docs/search, GET /docs/:id/text (read-only Google Docs)
   return app;
 }

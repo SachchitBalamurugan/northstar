@@ -285,7 +285,7 @@ function setNotchEnabled(on: boolean) {
 
 // ---------- Ask window (small text window anchored under the bubble) ----------
 let ask: BrowserWindow | null = null;
-const ASK_W = 520, ASK_MIN_H = 60, ASK_MAX_H = 340;
+const ASK_W = 520, ASK_MIN_H = 60, ASK_MAX_H = 520;
 let askH = 76;
 const MAIN_SCREENS = ["dashboard", "now", "activity", "approve", "inbox", "knowledge"];
 
@@ -479,6 +479,12 @@ function registerIpc() {
   ipcMain.on("ns:bubble-click", () => toggleAsk());
   ipcMain.on("ns:ask-toggle", () => toggleAsk());
   ipcMain.on("ns:ask-hide", () => hideAsk());
+  ipcMain.on("ns:ask-show", (_e, title: unknown) => {
+    const wasHidden = !ask || ask.isDestroyed() || !ask.isVisible();
+    showAsk();
+    if (wasHidden && Notification.isSupported())
+      new Notification({ title: "Northstar needs your OK", body: typeof title === "string" && title ? title.slice(0, 120) : "A task is waiting for you.", silent: false }).show();
+  });
   ipcMain.on("ns:ask-resize", (_e, h: unknown) => {
     const n = Math.round(Number(h));
     if (!Number.isFinite(n)) return;
