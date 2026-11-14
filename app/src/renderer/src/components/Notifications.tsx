@@ -77,7 +77,7 @@ export function NotificationBell() {
         className="relative flex h-9 w-9 items-center justify-center rounded-full text-muted transition-colors duration-150 hover:bg-white/10 hover:text-ink">
         <Bell size={17} strokeWidth={1.8} />
         {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-[#E26D45] px-1 text-[10px] font-semibold text-black">
+          <span className="absolute -top-0.5 -right-0.5 flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-accent-ink">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -87,7 +87,7 @@ export function NotificationBell() {
         {open && (
           <motion.div initial={{ opacity: 0, y: -6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -4, scale: 0.98 }}
             transition={{ duration: 0.16, ease: "easeOut" }} style={{ transformOrigin: "top right" }}
-            className="absolute right-0 top-[46px] z-50 w-[380px] overflow-hidden rounded-[16px] border border-line bg-[#0B0B0D] shadow-[0_24px_60px_-12px_rgba(0,0,0,0.7)]">
+            className="absolute right-0 top-[46px] z-50 w-[380px] overflow-hidden rounded-[16px] border border-line bg-surface shadow-[0_24px_60px_-12px_rgba(0,0,0,0.7)]">
             <div className="flex items-center justify-between border-b border-line px-4 py-3">
               <span className="text-[14px] font-semibold text-ink">Follow-ups</span>
               <div className="flex items-center gap-1">
@@ -110,19 +110,19 @@ export function NotificationBell() {
                   const Icon = k.icon;
                   return (
                     <li key={n.id} className="flex gap-3 border-b border-line/60 px-4 py-3 last:border-b-0">
-                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[#E26D45]">
+                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-accent">
                         <Icon size={14} />
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 text-[11px] text-faint">
                           <span>{k.label}</span><span>·</span><span>{relTime(n.createdAt)}</span>
-                          {!n.read && <span aria-label="Unread" className="ml-auto h-1.5 w-1.5 rounded-full bg-[#E26D45]" />}
+                          {!n.read && <span aria-label="Unread" className="ml-auto h-1.5 w-1.5 rounded-full bg-accent" />}
                         </div>
                         <div className="mt-0.5 truncate text-[13.5px] font-medium text-ink">{n.title}</div>
                         <div className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-muted">{n.body}</div>
                         <div className="mt-2 flex items-center gap-2">
                           {n.proposalId && (
-                            <button onClick={() => review(n)} className="rounded-full bg-[#E26D45] px-3 py-1 text-[12px] font-semibold text-black transition-opacity hover:opacity-90">
+                            <button onClick={() => review(n)} className="rounded-full bg-accent px-3 py-1 text-[12px] font-semibold text-accent-ink transition-opacity hover:opacity-90">
                               Review draft
                             </button>
                           )}

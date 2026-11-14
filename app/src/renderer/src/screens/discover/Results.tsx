@@ -181,7 +181,7 @@ function ResultCard({ r, picked, onToggle }: { r: DiscoverResult; picked: boolea
           </a>
         </div>
 
-        <p className="mt-2.5 flex items-start gap-1.5 text-[12.5px] leading-snug text-[#F3C27A]">
+        <p className="mt-2.5 flex items-start gap-1.5 text-[12.5px] leading-snug text-blue">
           <Sparkles size={13} className="mt-px shrink-0" />
           <span>{r.why}</span>
         </p>
@@ -198,7 +198,7 @@ function ResultCard({ r, picked, onToggle }: { r: DiscoverResult; picked: boolea
           type="button"
           onClick={e => { e.stopPropagation(); onToggle(); }}
           aria-pressed={picked}
-          className={`inline-flex items-center gap-1 rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition-colors ${picked ? "bg-white text-black hover:bg-white/90" : "border border-line text-warm hover:border-white/30 hover:text-ink"}`}
+          className={`inline-flex items-center gap-1 rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition-colors ${picked ? "bg-white text-accent-ink hover:bg-white/90" : "border border-line text-warm hover:border-white/30 hover:text-ink"}`}
         >
           {picked ? <><Check size={13} strokeWidth={2.5} />Picked</> : <><Plus size={13} />Pick</>}
         </button>

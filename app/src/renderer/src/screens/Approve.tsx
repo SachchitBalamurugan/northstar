@@ -96,7 +96,7 @@ const GROUPS: { key: string; label: string; types: Proposal["type"][] }[] = [
 const GROUP_ORDER = GROUPS.map((g) => g.key);
 const groupOf = (p: Proposal) => GROUPS.find((g) => g.types.includes(p.type))?.key ?? "suggest";
 const AGENT: Record<string, string> = { inbox: "Inbox", memory: "Memory", actions: "Actions", ui: "Memory" };
-const dot = (u: number) => (u >= 3 ? "bg-accent" : u === 2 ? "bg-[#F3C27A]" : "bg-faint/50");
+const dot = (u: number) => (u >= 3 ? "bg-accent" : u === 2 ? "bg-warn" : "bg-faint/50");
 
 function ago(ms: number) {
   const s = Math.max(0, Math.round(ms / 1000));

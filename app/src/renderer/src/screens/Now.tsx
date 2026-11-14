@@ -5,7 +5,7 @@ import type { CalEvent, Insights } from "@contracts/types";
 import { getInsights, getToday } from "@/api";
 import { useUI } from "@/store";
 import { useProfile, firstName } from "@/profile";
-import Orb from "@/three/Orb";
+import Network from "@/three/Network";
 import {
   Heading, Lead, Eyebrow, PrimaryButton, SecondaryButton, TextLink, Window, GlowCard, Chip, Stripes, relTime, clock,
 } from "@/components/ui";
@@ -77,7 +77,7 @@ export default function Now() {
       <section className="grid min-h-[460px] grid-cols-[1.1fr_0.9fr] items-center gap-10">
         <motion.div variants={stagger} initial="hidden" animate="show" className="min-w-0">
           <motion.div variants={rise} className="mb-6 flex items-center gap-2.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_10px_rgba(226,109,69,0.8)]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
             <Eyebrow>{dateLabel}{insights ? ` · ${onDeck} ${onDeck === 1 ? "thing" : "things"} on deck` : ""}</Eyebrow>
           </motion.div>
 
@@ -135,7 +135,7 @@ export default function Now() {
         <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.9, ease: "easeOut" }}
           className="relative flex items-center justify-center">
           <span aria-hidden className="pointer-events-none absolute left-1/2 top-1/2 h-[520px] w-[520px] -translate-x-1/2 -translate-y-1/2 rounded-full border-[0.8px] border-white/10" />
-          <Orb size={440} />
+          <Network size={440} />
         </motion.div>
       </section>
 
@@ -148,8 +148,8 @@ export default function Now() {
         <Window title="Today" icon={<CalendarDays size={16} />} tag="AUTO-PLANNED" meta={`${hoursLeft}h left today`}>
           <div className="px-6 pt-6 pb-5">
             <div className="relative h-1 w-full rounded-full bg-white/[0.06]" aria-label={`${Math.round(pct * 100)}% of the day gone`}>
-              <div className="h-full rounded-full bg-[linear-gradient(90deg,#FF8A3D,#E26D45)] transition-[width] duration-200" style={{ width: `${pct * 100}%` }} />
-              <span className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_12px_rgba(226,109,69,0.9)]"
+              <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${pct * 100}%` }} />
+              <span className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent"
                 style={{ left: `${pct * 100}%` }} />
             </div>
             <div className="relative mt-2.5 h-4">

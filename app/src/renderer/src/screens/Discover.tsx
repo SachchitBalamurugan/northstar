@@ -41,7 +41,7 @@ function NextStep({ children }: { children: string }) {
 function SaveButton({ item, onSave }: { item: DiscoverItem; onSave: () => void }) {
   return (
     <button onClick={onSave} disabled={item.saved}
-      className={`no-drag inline-flex items-center gap-1.5 text-[14px] transition-colors duration-150 ${item.saved ? "text-[#F3A27F]" : "text-muted hover:text-ink"}`}>
+      className={`no-drag inline-flex items-center gap-1.5 text-[14px] transition-colors duration-150 ${item.saved ? "text-accent" : "text-muted hover:text-ink"}`}>
       {item.saved ? <BookmarkCheck size={15} /> : <Bookmark size={15} />} {item.saved ? "Saved" : "Save"}
     </button>
   );

@@ -42,7 +42,7 @@ export default function SearchHero({ onSearch, running, onStop, history, compact
       <input value={q} onChange={e => setQ(e.target.value)} placeholder="e.g. career events this month, fun side quests this weekend"
         className={`min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-faint ${compact ? "text-[14px]" : "text-[16px]"}`} />
       <button type="submit"
-        className={`flex shrink-0 items-center gap-1.5 rounded-full bg-white font-medium text-black transition-opacity hover:opacity-90 ${compact ? "h-9 px-4 text-[13px]" : "h-12 px-5 text-[14px]"}`}>
+        className={`flex shrink-0 items-center gap-1.5 rounded-full bg-white font-medium text-accent-ink transition-opacity hover:opacity-90 ${compact ? "h-9 px-4 text-[13px]" : "h-12 px-5 text-[14px]"}`}>
         {running ? <><Square size={12} fill="currentColor" /> Stop</> : <>Research <ArrowUp size={15} /></>}
       </button>
     </form>

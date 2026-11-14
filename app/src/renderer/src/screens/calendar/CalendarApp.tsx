@@ -15,8 +15,8 @@ import {
 type CalId = "google" | "northstar" | "deadlines";
 const CALS: Record<CalId, { label: string; color: string; bg: string; border: string }> = {
   google: { label: "My calendar", color: "#9DB8FF", bg: "rgba(91,140,255,.16)", border: "#5B8CFF" },
-  northstar: { label: "Northstar focus blocks", color: "#FFB08F", bg: "rgba(226,109,69,.18)", border: "#E26D45" },
-  deadlines: { label: "Deadlines from email", color: "#F3C27A", bg: "rgba(243,194,122,.14)", border: "#F3C27A" },
+  northstar: { label: "Northstar focus blocks", color: "#3DDC97", bg: "rgba(61,220,151,.14)", border: "#3DDC97" },
+  deadlines: { label: "Deadlines from email", color: "#F2B84B", bg: "rgba(242,184,75,.12)", border: "#F2B84B" },
 };
 
 interface Ev extends CalEventFull { cal: CalId }
@@ -130,7 +130,7 @@ export default function CalendarApp() {
             ))}
           </div>
           <button onClick={() => { const s = new Date(cursor); const n = new Date(); s.setHours(sameDay(cursor, n) ? n.getHours() + 1 : 9, 0, 0, 0); newAt(s); }}
-            className="no-drag flex h-9 items-center gap-1.5 rounded-full bg-white px-4 text-[13.5px] font-medium text-black transition-opacity hover:opacity-90" title="New event (N)">
+            className="no-drag flex h-9 items-center gap-1.5 rounded-[10px] bg-accent px-4 text-[13.5px] font-medium text-accent-ink transition-opacity hover:opacity-90" title="New event (N)">
             <Plus size={15} /> New event
           </button>
         </div>
@@ -194,7 +194,7 @@ export default function CalendarApp() {
       <AnimatePresence>
         {toast && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}
-            className="fixed bottom-24 left-1/2 z-[70] -translate-x-1/2 rounded-full border-[0.8px] border-white/15 bg-[#141416] px-4 py-2 text-[13px] text-ink shadow-xl">
+            className="fixed bottom-24 left-1/2 z-[70] -translate-x-1/2 rounded-full border-[0.8px] border-white/15 bg-raised px-4 py-2 text-[13px] text-ink shadow-xl">
             {toast}
           </motion.div>
         )}
@@ -230,7 +230,7 @@ function MiniMonth({ cursor, events, onPick }: { cursor: Date; events: Ev[]; onP
           return (
             <button key={d.toISOString()} onClick={() => onPick(d)}
               className={`no-drag relative mx-auto flex h-7 w-7 items-center justify-center rounded-full text-[12px] tabular-nums transition-colors
-                ${sel ? "bg-white text-black" : isToday ? "text-accent" : inMonth ? "text-warm hover:bg-white/[0.07]" : "text-faint/60 hover:bg-white/[0.05]"}`}>
+                ${sel ? "bg-white text-accent-ink" : isToday ? "text-accent" : inMonth ? "text-warm hover:bg-white/[0.07]" : "text-faint/60 hover:bg-white/[0.05]"}`}>
               {d.getDate()}
               {has.has(d.toDateString()) && !sel && <span className="absolute bottom-0.5 h-1 w-1 rounded-full bg-white/40" />}
             </button>
@@ -295,7 +295,7 @@ function TimeGrid({ days, events, onOpen, onCreate, onDayHeader }: {
           return (
             <button key={d.toISOString()} onClick={() => onDayHeader(d)} className={`no-drag flex ${single ? "items-center gap-3 px-4" : "flex-col items-center"} py-2.5 hover:bg-white/[0.02]`}>
               <span className={`text-[11px] tracking-[0.12em] uppercase ${isToday ? "text-accent" : "text-faint"}`}>{d.toLocaleDateString([], { weekday: "short" })}</span>
-              <span className={`display mt-0.5 flex h-9 w-9 items-center justify-center rounded-full text-[20px] ${isToday ? "bg-accent text-black" : "text-ink"}`}>{d.getDate()}</span>
+              <span className={`display mt-0.5 flex h-9 w-9 items-center justify-center rounded-full text-[20px] ${isToday ? "bg-accent text-accent-ink" : "text-ink"}`}>{d.getDate()}</span>
             </button>
           );
         })}
@@ -345,7 +345,7 @@ function TimeGrid({ days, events, onOpen, onCreate, onDayHeader }: {
                 })}
                 {isToday && (
                   <div className="pointer-events-none absolute right-0 left-0 z-10" style={{ top: (minutesOfDay(now) / 60) * HOUR_PX }}>
-                    <div className="relative h-[2px] bg-accent shadow-[0_0_8px_#E26D45]"><span className="absolute -top-[4px] -left-[5px] h-2.5 w-2.5 rounded-full bg-accent" /></div>
+                    <div className="relative h-[2px] bg-accent"><span className="absolute -top-[4px] -left-[5px] h-2.5 w-2.5 rounded-full bg-accent" /></div>
                   </div>
                 )}
               </div>
@@ -377,7 +377,7 @@ function MonthGrid({ days, cursor, events, onOpen, onDay, onCreate }: {
               className={`group relative h-[112px] border-line p-1.5 ${i % 7 ? "border-l-[0.8px]" : ""} ${i >= 7 ? "border-t-[0.8px]" : ""} ${inMonth ? "" : "bg-white/[0.012]"}`}>
               <button onClick={() => onDay(d)}
                 className={`no-drag mb-1 flex h-6 w-6 items-center justify-center rounded-full text-[12px] tabular-nums transition-colors
-                  ${isToday ? "bg-accent text-black" : inMonth ? "text-warm hover:bg-white/10" : "text-faint/60 hover:bg-white/[0.06]"}`}>{d.getDate()}</button>
+                  ${isToday ? "bg-accent text-accent-ink" : inMonth ? "text-warm hover:bg-white/10" : "text-faint/60 hover:bg-white/[0.06]"}`}>{d.getDate()}</button>
               <div className="flex flex-col gap-0.5">
                 {list.slice(0, 3).map(e => <Chip key={e.id} e={e} onOpen={onOpen} compact />)}
                 {list.length > 3 && <button onClick={() => onDay(d)} className="no-drag px-1.5 text-left text-[11px] text-muted hover:text-ink">+{list.length - 3} more</button>}
@@ -414,7 +414,7 @@ function Overlay({ children, onClose }: { children: React.ReactNode; onClose: ()
       onMouseDown={onClose} className="fixed inset-0 z-[65] flex items-center justify-center bg-black/55 backdrop-blur-sm">
       <motion.div initial={{ scale: 0.96, y: 8 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.97, y: 4 }} transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
         onMouseDown={e => e.stopPropagation()}
-        className="w-[440px] overflow-hidden rounded-[18px] border-[0.8px] border-white/12 bg-[#0E0E10] shadow-[0_30px_100px_rgba(0,0,0,.7)]">
+        className="w-[440px] overflow-hidden rounded-[18px] border-[0.8px] border-white/12 bg-surface shadow-[0_30px_100px_rgba(0,0,0,.7)]">
         {children}
       </motion.div>
     </motion.div>
@@ -431,7 +431,7 @@ function EventDetails({ ev, onClose, onEdit, onDelete }: { ev: Ev; onClose: () =
         {confirming ? (
           <span className="mr-auto flex items-center gap-2 pl-3 text-[13px] text-warm">
             Delete this event?
-            <button onClick={onDelete} className="no-drag rounded-full bg-[#E26D45] px-3 py-1 text-[12.5px] font-medium text-black">Delete</button>
+            <button onClick={onDelete} className="no-drag rounded-full bg-accent px-3 py-1 text-[12.5px] font-medium text-accent-ink">Delete</button>
             <button onClick={() => setConfirming(false)} className="no-drag px-2 py-1 text-[12.5px] text-muted hover:text-ink">Keep</button>
           </span>
         ) : null}
@@ -489,7 +489,7 @@ function EventEditor({ draft, busy, onChange, onCancel, onSave }: { draft: Draft
       <div className="flex items-center justify-end gap-3">
         <button type="button" onClick={onCancel} className="no-drag text-[14px] text-muted hover:text-ink">Cancel</button>
         <button type="submit" disabled={!draft.title.trim() || busy}
-          className="no-drag h-10 rounded-full bg-white px-5 text-[14px] font-medium text-black transition-opacity disabled:opacity-40">{busy ? "Saving…" : draft.id ? "Save changes" : "Add to calendar"}</button>
+          className="no-drag h-10 rounded-[10px] bg-accent px-5 text-[14px] font-medium text-accent-ink transition-opacity disabled:opacity-40">{busy ? "Saving…" : draft.id ? "Save changes" : "Add to calendar"}</button>
       </div>
     </form>
   );

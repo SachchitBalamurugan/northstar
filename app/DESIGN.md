@@ -1,47 +1,55 @@
-# Northstar design system (matched to sentient-os.ai, measured from the live site)
+# Northstar design system v2 — "Star chart"
 
-The goal is to look and feel like Sentient OS: pure black, cinematic, glowing, minimal. We match the visual language but use our own copy, logo and imagery, never Sentient's text, logo, screenshots or videos.
+Northstar = navigation. The look is a calm instrument panel / star chart: precise, technical, human.
+NOT the Sentient-OS look (no pure-black + rainbow glows + Cabinet Grotesk), and nothing that reads as "generic AI"
+(no purple/pink, no rainbow conic glows, no gradient-text headlines, no glowing blobs, no sparkle emoji).
+Exception: the floating desktop orb bubble (Bubble.tsx) keeps its current look.
 
-## Tokens (CSS vars in styles.css → Tailwind classes)
-
-| Role | Value | Tailwind |
+## Color tokens
+| Token | Value | Use |
 |---|---|---|
-| Page bg | `#000000` | `bg-bg` |
-| Window/card surface | `#0B0B0D` | `bg-surface` |
-| Raised surface | `#141416` | `bg-raised` |
-| Text | `#FFFFFF` | `text-ink` |
-| Warm text (inside windows) | `#E8E5DF` | `text-warm` |
-| Muted text | `#A5A5AD` | `text-muted` |
-| Faint text | `#6E6E76` | `text-faint` |
-| Hairline | `rgba(255,255,255,0.118)` | `border-line` |
-| Glass fill | `rgba(255,255,255,0.05)` | `bg-glass` |
-| Accent (one only) | `#E26D45` | `text-accent`, `bg-accent`, `border-accent` |
-| Selected (warm gold) | bg `rgba(195,161,106,0.075)`, text `#F0E4D0`, inset ring `rgba(210,177,122,0.08)` | `.selected` utility |
+| `--bg` | `#070B0F` | page background (deep ink navy, not pure black) |
+| `--surface` | `#0D1318` | cards / windows |
+| `--raised` | `#131B21` | inputs, nested blocks |
+| `--line` | `rgba(148,180,200,0.12)` | hairlines, borders |
+| `--line-strong` | `rgba(148,180,200,0.22)` | hover borders, dividers |
+| `--ink` | `#EAF2F2` | primary text |
+| `--warm` | `#C9D6DA` | secondary text (kept the token name for compatibility) |
+| `--muted` | `#8C9DA7` | muted text |
+| `--faint` | `#5B6B75` | labels, metadata |
+| `--accent` | `#3DDC97` | **mint green** — primary actions, active states, "north star" |
+| `--accent-ink` | `#04140D` | text on accent |
+| `--blue` | `#4C9AFF` | secondary accent — links, calendar, info |
+| `--cyan` | `#2BC3D8` | sparing tertiary (charts, network links) |
+| `--warn` | `#F2B84B` | due soon / needs attention (amber, small doses) |
+| `--danger` | `#F06464` | destructive only |
+
+Rules: one accent per view (mint). Blue for info/links. Gradients only as very subtle background vignettes
+(mint/blue at ≤6% opacity), never on text or buttons. Emphasis words in headlines = solid mint, not gradient.
 
 ## Type
-- **Headings:** Cabinet Grotesk 500 (`font-display`), letter-spacing **-0.045em**, line-height 1.08. Hero 56–60px, section 40px, card title 22–26px. Two-line headings with a hard `<br/>`.
-- **Body:** Satoshi 400/500 (`font-sans`). Lead 18px muted `#A5A5AD`; UI 14–15px; small 12px.
-- **Eyebrow:** 12px, uppercase, letter-spacing 0.14em, faint. Numbered style "01 · SIDEKICK".
-- Warm gradient word for emphasis: the last word of a headline can use `.text-glow` (white → `#F3C27A` → `#E26D45`).
+- Headings: **Manrope** 600/700, letter-spacing -0.025em, line-height 1.1.
+- Body: **Inter** 400/500, 15–17px, line-height 1.6.
+- Labels / eyebrows / metadata / numbers: **JetBrains Mono** 500, 11–12px, uppercase, letter-spacing 0.08em.
+- Google Fonts: `https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap`
 
-## Components (all in `src/renderer/src/components/ui.tsx`)
-- **GlassPill**: rounded-full, `bg-glass`, 0.8px border `#373737`, `backdrop-blur-[12px]`, padding 9.5px. Used for the top nav and segmented controls.
-- **PrimaryButton**: white pill, black text, Satoshi 500 14–15px, padding 14px 20px, with a **rainbow glow** behind it (blurred conic gradient: orange, pink, purple, blue) that breathes slowly. One per screen.
-- **SecondaryButton**: pill, `bg-white/6`, border `white/38`, white text.
-- **Window**: the macOS-style app window from Sentient's Knowledge demo. 18px radius, `bg-surface`, hairline border, shadow `0 24px 80px rgba(0,0,0,.33)` + inset top highlight `inset 0 1px 0 rgba(255,255,255,.02)`. Optional title bar with three dim dots, an icon + title, a small "EXAMPLE"-style tag, and right-aligned meta.
-- **GlowCard**: the "Proactive intelligence" card. Dark card with a soft orange/gold glowing border (box-shadow 0 0 0 1px rgba(226,109,69,.35), 0 0 40px rgba(226,109,69,.25)). Used for the most important item.
-- **AppChip**: rounded-xl dark tile with an icon square + label (like the Notes / Emails / Calendar chips).
-- **NumberedList**: rows "01 Finish applications"; the active row has a 1px accent left border, white text, and a number in accent; inactive rows are muted.
-- **Stripes**: a diagonal-hatch divider band (repeating-linear-gradient 45deg, `rgba(255,255,255,.06)` 1px lines every 10px, with top and bottom hairlines).
-- **AmbientGlow**: fixed background radial blooms at the top corners (blue `#3B5BFF`, pink `#FF3DA5`, orange `#FF8A3D`) at about 0.18 opacity, heavily blurred.
+## Shapes & surfaces
+- Radius: cards 14px, inputs 10px, buttons 10px (not pills). Small chips 6px.
+- Borders: 1px `--line`; hover `--line-strong`. Shadows minimal (`0 1px 0 rgba(255,255,255,.03) inset`, `0 12px 32px rgba(0,0,0,.35)`).
+- Background texture: faint 48px grid (`rgba(148,180,200,0.04)` lines) + optional crosshair "+" marks at section corners.
+- Window chrome: title row with a small mono label left (e.g. `INBOX / BRIEFING`) instead of macOS traffic-light dots.
 
-## 3D (Three.js, `src/renderer/src/three/`)
-- **Orb.tsx**: the iridescent particle blob. About 12–20k points on a sphere, displaced by animated 3D noise in the vertex shader. The color comes from position: an orange → pink → purple → blue → cyan gradient that slowly rotates. Uses additive blending, small round points, and a soft bloom (a CSS radial glow behind the canvas is fine). It responds to `intensity` (0–1) and `speed` props, rotates slowly, is transparent, renders DPR ≤ 2, and pauses when hidden. `prefers-reduced-motion` gives a static frame.
-- **Wormhole.tsx**: a white wireframe funnel (polar grid of rings and spokes, z displaced as 1/r) on black, with the camera slowly tilting. Used behind Focus mode and Onboarding.
+## Components
+- **Primary button**: solid mint bg, `--accent-ink` text, 10px radius, 600 weight, subtle hover lift; no glow.
+- **Secondary button**: transparent, 1px `--line-strong` border, `--ink` text; hover bg `rgba(255,255,255,.04)`.
+- **Focus ring**: 2px mint at 40% opacity.
+- **Active nav item**: mint text + 2px mint underline/dot, not a glowing pill.
+- **Status colors**: mint = done/good, amber = due soon, blue = info, red = destructive.
 
 ## Motion
-Framer-motion. Fades and rises take 200–400ms (`easeOut`), and headings stagger in by line. No bouncy springs. Respect `prefers-reduced-motion`.
+Short and functional: 150–250ms ease-out fades/translates. No breathing glows. Respect prefers-reduced-motion.
 
-## Layout
-- No left rail. A top bar holds the **logo** on the left (a glowing ring orb plus "Northstar" in Cabinet 24px), a centered **GlassPill nav** (Now · Approve · Inbox · Knowledge, active = white text on `bg-white/10` pill, inactive = muted), and on the right a **PrimaryButton "Hand off a task"** with a `Ctrl Space` kbd hint. The top bar is a drag region, and buttons are no-drag. Leave 140px free on the far right for the Windows titlebar controls.
-- Content width max 1120px, generous vertical rhythm (sections 96px apart).
+## Hero / brand visual
+Three.js **constellation network**: ~120–220 nodes in a slowly rotating 3D cloud, links drawn between near neighbours
+(thin lines, opacity by distance), nodes mint/blue/cyan at low alpha, a handful of brighter "stars" softly twinkling,
+and ONE brighter mint "north star" node. Mouse moves it gently (parallax). Pauses offscreen; static for reduced motion.

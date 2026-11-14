@@ -15,13 +15,13 @@ export function ProfileButton() {
   const setOpen = useProfile(s => s.setOpen);
   const empty = !profile.name.trim() && !profile.school.trim();
   const ini = initials(profile.name);
-  const dot = sync === "synced" ? "bg-emerald-400" : sync === "local" ? "bg-amber-400" : sync === "saving" ? "bg-white/60" : "bg-white/25";
+  const dot = sync === "synced" ? "bg-accent" : sync === "local" ? "bg-warn" : sync === "saving" ? "bg-white/60" : "bg-white/25";
 
   return (
     <button type="button" title="Your profile" aria-label="Your profile" onClick={() => setOpen(true)}
       className="no-drag relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full p-[1.5px] transition-transform duration-150 hover:scale-[1.04] active:scale-[0.97]"
-      style={{ background: "conic-gradient(from 200deg, #E26D45, #FF3DA5, #8B5CF6, #3B82F6, #E26D45)" }}>
-      <span className="flex h-full w-full items-center justify-center rounded-full bg-[#0B0B0D] text-[12.5px] font-medium tracking-[0.02em] text-ink">
+      style={{ background: "var(--line-strong)" }}>
+      <span className="flex h-full w-full items-center justify-center rounded-full bg-surface text-[12.5px] font-medium tracking-[0.02em] text-ink">
         {ini || <User size={15} className="text-muted" />}
       </span>
       {empty ? (
@@ -141,7 +141,7 @@ export function ProfilePanel() {
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
           onMouseDown={e => { if (e.target === e.currentTarget) close(); }}>
           <motion.aside role="dialog" aria-label="Profile"
-            className="absolute top-0 right-0 flex h-full w-[460px] max-w-full flex-col border-l-[0.8px] border-line bg-[#0B0B0D] shadow-[-24px_0_80px_rgba(0,0,0,0.45)]"
+            className="absolute top-0 right-0 flex h-full w-[460px] max-w-full flex-col border-l-[0.8px] border-line bg-surface shadow-[-24px_0_80px_rgba(0,0,0,0.45)]"
             initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", stiffness: 380, damping: 38 }}>
             <div className="flex-1 overflow-y-auto px-7 pt-8 pb-6">
               <div className="mb-8 flex items-start justify-between gap-4">
@@ -168,7 +168,7 @@ export function ProfilePanel() {
                       const on = draft.statuses.includes(s);
                       return (
                         <button key={s} type="button" aria-pressed={on} onClick={() => toggleStatus(s)}
-                          className={`no-drag h-8 rounded-full border-[0.8px] px-3.5 text-[13px] transition-colors duration-150 ${on ? "border-white bg-white text-black" : "border-line bg-white/[0.03] text-warm hover:bg-white/[0.07]"}`}>
+                          className={`no-drag h-8 rounded-full border-[0.8px] px-3.5 text-[13px] transition-colors duration-150 ${on ? "border-white bg-white text-accent-ink" : "border-line bg-white/[0.03] text-warm hover:bg-white/[0.07]"}`}>
                           {STATUS_LABELS[s]}
                         </button>
                       );
@@ -281,8 +281,8 @@ export function ProfilePanel() {
                   </div>
                   <Field label="Work authorization">
                     <select className={inputCls} value={draft.workAuthorization} onChange={e => set("workAuthorization", e.target.value)}>
-                      <option value="" className="bg-[#0B0B0D]">Not set</option>
-                      {WORK_AUTH_OPTIONS.map(o => <option key={o} value={o} className="bg-[#0B0B0D]">{o}</option>)}
+                      <option value="" className="bg-surface">Not set</option>
+                      {WORK_AUTH_OPTIONS.map(o => <option key={o} value={o} className="bg-surface">{o}</option>)}
                     </select>
                   </Field>
                   <Field label="Resume (full path to PDF)"><input className={inputCls} value={draft.resumePath} placeholder={"C:\\Users\\you\\Documents\\resume.pdf"} onChange={e => set("resumePath", e.target.value)} /></Field>
@@ -304,7 +304,7 @@ export function ProfilePanel() {
               </div>
             </div>
 
-            <div className="sticky bottom-0 flex items-center gap-4 border-t-[0.8px] border-line bg-[#0B0B0D] px-7 py-4">
+            <div className="sticky bottom-0 flex items-center gap-4 border-t-[0.8px] border-line bg-surface px-7 py-4">
               <span className={`min-w-0 flex-1 truncate text-[12.5px] ${sync === "synced" ? "text-emerald-400/90" : sync === "local" ? "text-amber-300/90" : "text-faint"}`}>
                 {syncText}
               </span>

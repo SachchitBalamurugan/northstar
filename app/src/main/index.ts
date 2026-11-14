@@ -146,7 +146,8 @@ function createBubble() {
   const wa = screen.getPrimaryDisplay().workArea;
   bubble = new BrowserWindow({
     width: BUBBLE, height: BUBBLE,
-    x: Math.round(wa.x + wa.width / 2 + 150), y: wa.y + 6, // orb sits just right of the camera notch
+    // Clear of the camera notch even when it is expanded (half its width + margin).
+    x: Math.round(wa.x + wa.width / 2 + NOTCH_EXPANDED.width / 2 + 24), y: wa.y + 8,
     frame: false, transparent: true, backgroundColor: "#00000000", hasShadow: false,
     resizable: false, maximizable: false, minimizable: false, fullscreenable: false,
     skipTaskbar: true, alwaysOnTop: true,
@@ -251,11 +252,26 @@ function createNotch() {
   notch.on("closed", () => { notch = null; });
 }
 
+// Safety net: if the notch is expanded but the cursor has left it for ~1.2s, shrink the window back to the thin
+// strip. Otherwise an invisible 460x340 window can sit over the top of the screen (and over the orb).
+let notchWatch: NodeJS.Timeout | null = null;
+function watchNotchHover() {
+  if (notchWatch) clearInterval(notchWatch);
+  let outside = 0;
+  notchWatch = setInterval(() => {
+    if (!notch || notch.isDestroyed() || !notchExpanded) { if (notchWatch) clearInterval(notchWatch); notchWatch = null; return; }
+    const p = screen.getCursorScreenPoint(), b = notch.getBounds();
+    const inside = p.x >= b.x && p.x <= b.x + b.width && p.y >= b.y && p.y <= b.y + b.height;
+    outside = inside ? 0 : outside + 1;
+    if (outside >= 4) { notch.webContents.send("ns:notch-force-collapse"); setNotchExpanded(false); }
+  }, 300);
+}
+
 function setNotchExpanded(expanded: boolean) {
   if (!notch || notch.isDestroyed()) return;
   notchExpanded = expanded;
   notch.setBounds(notchBounds(expanded));
-  if (expanded) notch.focus();
+  if (expanded) { notch.focus(); watchNotchHover(); }
 }
 
 function setNotchEnabled(on: boolean) {

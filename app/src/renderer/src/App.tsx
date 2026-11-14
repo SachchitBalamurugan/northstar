@@ -28,26 +28,16 @@ const NAV: { id: Screen; label: string }[] = [
   { id: "knowledge", label: "Knowledge" },
 ];
 
-const IRIDESCENT = "conic-gradient(from var(--ns-angle, 0deg), #FF8A3D, #FF3DA5, #8B5CF6, #3B82F6, #22D3EE, #FF8A3D)";
-
-/** The center "home" tab: iridescent rotating ring + glow, icon, and solid white when active. */
+/** The center "home" tab: mint-outlined button, filled solid mint when active. */
 function DashboardTab({ active, onClick }: { active: boolean; onClick: () => void }) {
   return (
-    <motion.button onClick={onClick} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}
-      className="no-drag relative mx-1.5 isolate" aria-current={active ? "page" : undefined} title="Dashboard: what matters most today">
-      {/* soft glow */}
-      <span aria-hidden className={`absolute -inset-1.5 -z-10 rounded-full blur-[10px] transition-opacity duration-300 ${active ? "opacity-70" : "opacity-40"}`}
-        style={{ background: IRIDESCENT, animation: "ns-ring 6s linear infinite" }} />
-      {/* rotating iridescent ring */}
-      <span aria-hidden className="absolute inset-0 rounded-full p-[1.5px]" style={{ background: IRIDESCENT, animation: "ns-ring 6s linear infinite" }}>
-        <span className={`block h-full w-full rounded-full transition-colors duration-300 ${active ? "bg-white" : "bg-[#0B0B0D]"}`} />
-      </span>
-      <span className={`relative flex h-11 items-center gap-2 px-5 text-[14.5px] font-semibold tracking-[-0.01em] transition-colors duration-300 ${active ? "text-black" : "text-ink"}`}>
-        <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden>
-          <path d="M8 1.5 L9.6 6.4 L14.5 8 L9.6 9.6 L8 14.5 L6.4 9.6 L1.5 8 L6.4 6.4 Z" fill="currentColor" />
-        </svg>
-        Dashboard
-      </span>
+    <motion.button onClick={onClick} whileTap={{ scale: 0.97 }} transition={{ duration: 0.15, ease: "easeOut" }}
+      className={`no-drag relative mx-1.5 flex h-10 items-center gap-2 rounded-[8px] border px-4 text-[14px] font-semibold tracking-[-0.01em] transition-colors duration-200 ${active ? "border-accent bg-accent text-accent-ink" : "border-accent/60 text-accent hover:bg-accent/10"}`}
+      aria-current={active ? "page" : undefined} title="Dashboard: what matters most today">
+      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden>
+        <path d="M8 1.5 L9.6 6.4 L14.5 8 L9.6 9.6 L8 14.5 L6.4 9.6 L1.5 8 L6.4 6.4 Z" fill="currentColor" />
+      </svg>
+      Dashboard
     </motion.button>
   );
 }
@@ -93,7 +83,7 @@ export default function App() {
   const shell = (children: React.ReactNode) => (
     <motion.div animate={pop} initial={inElectron ? { scale: 0.04, opacity: 0, borderRadius: 400 } : false}
       style={{ transformOrigin: origin, willChange: "transform, opacity" }}
-      className={`relative flex h-full flex-col overflow-hidden bg-bg ${inElectron ? "rounded-[16px] border-[0.8px] border-white/10" : ""}`}>
+      className={`relative flex h-full flex-col overflow-hidden bg-bg ${inElectron ? "rounded-[16px] border border-line" : ""}`}>
       {children}
       {inElectron && <WindowControls />}
     </motion.div>
@@ -147,12 +137,12 @@ export default function App() {
               <DashboardTab key={id} active={screen === "dashboard"} onClick={() => setScreen("dashboard")} />
             ) : (
               <button key={id} onClick={() => setScreen(id)}
-                className={`relative h-10 rounded-full px-3 text-[14.3px] font-medium tracking-[-0.01em] transition-colors duration-200 ${screen === id ? "text-ink" : "text-muted hover:text-ink"}`}>
-                {screen === id && <motion.span layoutId="nav-pill" transition={{ duration: 0.3, ease: "easeOut" }} className="absolute inset-0 rounded-full bg-white/10" />}
+                className={`relative h-10 rounded-[8px] px-3 text-[14px] font-medium tracking-[-0.01em] transition-colors duration-200 ${screen === id ? "text-accent" : "text-muted hover:text-ink"}`}>
+                {screen === id && <motion.span layoutId="nav-pill" transition={{ duration: 0.25, ease: "easeOut" }} className="absolute inset-x-3 bottom-1 h-[2px] rounded-full bg-accent" />}
                 <span className="relative flex items-center gap-2">
                   {label}
                   {id === "approve" && pendingCount > 0 && (
-                    <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent px-1 text-[10.5px] font-semibold text-black">{pendingCount}</span>
+                    <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-[5px] bg-accent px-1 font-mono text-[10.5px] font-semibold text-accent-ink">{pendingCount}</span>
                   )}
                 </span>
               </button>
@@ -166,7 +156,7 @@ export default function App() {
           <ProfileButton />
           <span title={`${live}/3 services live. Offline services use demo data.`} className="no-drag flex items-center gap-1.5">
             {(Object.keys(health) as ServiceName[]).map(s => (
-              <span key={s} title={`${s}: ${health[s] ? "live" : "demo data"}`} className={`h-1.5 w-1.5 rounded-full ${health[s] ? "bg-emerald-400 shadow-[0_0_8px_#34d399]" : "bg-white/20"}`} />
+              <span key={s} title={`${s}: ${health[s] ? "live" : "demo data"}`} className={`h-1.5 w-1.5 rounded-full ${health[s] ? "bg-accent" : "bg-white/20"}`} />
             ))}
           </span>
         </div>
@@ -198,7 +188,7 @@ export default function App() {
 
 /** Minimal window buttons for the frameless window. Close/minimize zoom back into the orb. */
 function WindowControls() {
-  const btn = "no-drag flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors duration-150 hover:bg-white/10 hover:text-ink";
+  const btn = "no-drag flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors duration-150 hover:bg-white/[0.06] hover:text-ink";
   return (
     <div className="absolute top-[26px] right-5 z-30 flex items-center gap-1">
       <button aria-label="Minimize" className={btn} onClick={() => window.northstar?.winMin()}>
@@ -207,7 +197,7 @@ function WindowControls() {
       <button aria-label="Maximize" className={btn} onClick={() => window.northstar?.winMax()}>
         <svg width="12" height="12" viewBox="0 0 12 12"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.3" /></svg>
       </button>
-      <button aria-label="Close" className={`${btn} hover:bg-[#E26D45]/80 hover:text-black`} onClick={() => window.northstar?.winClose()}>
+      <button aria-label="Close" className={`${btn} hover:bg-danger/80 hover:text-white`} onClick={() => window.northstar?.winClose()}>
         <svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
       </button>
     </div>

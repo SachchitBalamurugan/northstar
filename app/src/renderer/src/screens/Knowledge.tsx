@@ -13,18 +13,18 @@ const md = {
   p: (p: any) => <p className="mb-4 text-[15px] leading-[1.75] text-warm/85" {...p} />,
   ul: (p: any) => <ul className="mb-4 list-disc space-y-1.5 pl-5 text-[15px] leading-[1.75] text-warm/85 marker:text-faint" {...p} />,
   ol: (p: any) => <ol className="mb-4 list-decimal space-y-1.5 pl-5 text-[15px] leading-[1.75] text-warm/85 marker:text-faint" {...p} />,
-  strong: (p: any) => <strong className="font-medium text-[#E8C48A]" {...p} />,
-  a: (p: any) => <a className="text-[#E8C48A] underline decoration-[#E8C48A]/40 underline-offset-4 hover:decoration-[#E8C48A]" {...p} />,
+  strong: (p: any) => <strong className="font-medium text-ink" {...p} />,
+  a: (p: any) => <a className="text-blue underline decoration-blue/40 underline-offset-4 hover:decoration-[#E8C48A]" {...p} />,
   code: (p: any) => <code className="rounded-[5px] bg-white/[0.06] px-1.5 py-0.5 font-mono text-[13px] text-warm" {...p} />,
 };
 
 const label = (n: string) => n.replace(/\.md$/i, "");
 
 const SOURCES = [
-  { icon: <Mail size={16} className="text-[#7AA7FF]" />, label: "Emails", bg: "bg-[#3B82F6]/20" },
-  { icon: <CalendarDays size={16} className="text-[#FFB27A]" />, label: "Calendar", bg: "bg-[#FF8A3D]/20" },
-  { icon: <FileText size={16} className="text-[#FF8CCB]" />, label: "Applications", bg: "bg-[#FF3DA5]/20" },
-  { icon: <Brain size={16} className="text-[#B9A2FF]" />, label: "Memory", bg: "bg-[#8B5CF6]/20" },
+  { icon: <Mail size={16} className="text-blue" />, label: "Emails", bg: "bg-blue/15" },
+  { icon: <CalendarDays size={16} className="text-accent" />, label: "Calendar", bg: "bg-accent/15" },
+  { icon: <FileText size={16} className="text-cyan" />, label: "Applications", bg: "bg-cyan/15" },
+  { icon: <Brain size={16} className="text-warn" />, label: "Memory", bg: "bg-warn/15" },
 ];
 
 export default function Knowledge() {

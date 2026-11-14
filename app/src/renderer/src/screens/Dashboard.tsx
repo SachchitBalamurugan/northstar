@@ -136,7 +136,7 @@ export default function Dashboard() {
                   return (
                     <li key={ev.id} className={`flex items-center gap-3 border-b-[0.8px] border-line py-3 last:border-b-0 ${past ? "opacity-40" : ""}`}>
                       <span className="w-16 shrink-0 text-[12.5px] text-muted tabular-nums">{clock(ev.start)}</span>
-                      {ev.northstar && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent shadow-[0_0_8px_#E26D45]" />}
+                      {ev.northstar && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
                       <span className="truncate text-[14px] text-warm">{ev.title.replace(/^◎\s*/, "")}</span>
                     </li>
                   );
@@ -155,7 +155,7 @@ export default function Dashboard() {
                         {c.dueAt && <p className="text-[12px] text-faint">Due {relTime(c.dueAt)}</p>}
                       </div>
                       <button onClick={() => openUrl(c.calendarUrl!)} title="Opens Google Calendar with this event filled in"
-                        className="no-drag flex shrink-0 items-center gap-1 rounded-full bg-white px-3 py-1.5 text-[12.5px] font-medium text-black transition-opacity hover:opacity-90">
+                        className="no-drag flex shrink-0 items-center gap-1 rounded-[10px] bg-accent px-3 py-1.5 text-[12.5px] font-medium text-accent-ink transition-opacity hover:opacity-90">
                         Add <ArrowUpRight size={13} />
                       </button>
                     </li>
@@ -234,13 +234,13 @@ export function CalendarAgentBox() {
                         const SrcIcon = c.source === "email" ? Mail : c.source === "knowledge" ? BookOpen : c.source === "approval" ? Sparkles : c.source === "calendar" ? CalendarDays : PenLine;
                         return (
                           <motion.li key={c.id} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0, transition: { delay: i * 0.06 } }} exit={{ opacity: 0, height: 0 }}
-                            className={`rounded-[12px] border-[0.8px] p-3.5 transition-colors ${st === "added" || st === "link" ? "border-emerald-400/30 bg-emerald-400/[0.04]" : "border-line bg-raised"}`}>
+                            className={`rounded-[12px] border-[0.8px] p-3.5 transition-colors ${st === "added" || st === "link" ? "border-emerald-400/30 bg-accent/[0.04]" : "border-line bg-raised"}`}>
                             <div className="flex items-start gap-3">
                               <div className="min-w-0 flex-1">
                                 <p className="truncate text-[14.5px] text-ink">{c.title}</p>
                                 <p className="mt-0.5 text-[12.5px] text-warm tabular-nums">{when(c)}</p>
                                 <p className="mt-1.5 flex items-center gap-1.5 text-[11.5px] text-faint"><SrcIcon size={12} /> {c.sourceLabel}</p>
-                                {c.conflict && <p className="mt-1 text-[11.5px] text-[#F3A27F]">⚠ {c.conflict}</p>}
+                                {c.conflict && <p className="mt-1 text-[11.5px] text-accent">⚠ {c.conflict}</p>}
                               </div>
                               {st === "added" ? (
                                 <span className="flex shrink-0 items-center gap-1 text-[12.5px] text-emerald-300"><Check size={14} /> Added</span>
@@ -253,7 +253,7 @@ export function CalendarAgentBox() {
                                   <button onClick={() => setStatus(s => ({ ...s, [c.id]: "skipped" }))}
                                     className="no-drag rounded-full px-2.5 py-1.5 text-[12.5px] text-faint hover:text-warm">Skip</button>
                                   <button onClick={() => add(c)} disabled={st === "adding"}
-                                    className="no-drag flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-[12.5px] font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50">
+                                    className="no-drag flex items-center gap-1 rounded-[10px] bg-accent px-3 py-1.5 text-[12.5px] font-medium text-accent-ink transition-opacity hover:opacity-90 disabled:opacity-50">
                                     {st === "adding" ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Add
                                   </button>
                                 </div>
@@ -278,7 +278,7 @@ export function CalendarAgentBox() {
           placeholder="Add an event… e.g. career fair next Tue 2pm"
           className="no-drag h-10 min-w-0 flex-1 rounded-full border-[0.8px] border-line bg-white/[0.03] px-4 text-[13.5px] text-ink placeholder:text-faint focus:border-white/25 focus:outline-none" />
         <button type="submit" disabled={!q.trim() || busy} aria-label="Find events"
-          className="no-drag flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-black transition-opacity disabled:opacity-25">
+          className="no-drag flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-accent-ink transition-opacity disabled:opacity-25">
           {busy ? <Loader2 size={16} className="animate-spin" /> : <ArrowUp size={16} />}
         </button>
       </form>
@@ -288,7 +288,7 @@ export function CalendarAgentBox() {
 
 function KindTag({ kind }: { kind: PriorityKind }) {
   const Icon = ICON[kind];
-  return <span className="flex items-center gap-1.5 text-[12px] font-medium tracking-[0.06em] text-[#F3A27F] uppercase"><Icon size={13} /> {LABEL[kind]}</span>;
+  return <span className="flex items-center gap-1.5 text-[12px] font-medium tracking-[0.06em] text-accent uppercase"><Icon size={13} /> {LABEL[kind]}</span>;
 }
 
 /** Thin 8am–11pm progress bar with a glowing "now" dot. */
@@ -301,8 +301,8 @@ function DayBar() {
     <div className="px-5 pt-4 pb-2">
       <div className="mb-2 flex justify-between text-[11px] text-faint"><span>8a</span><span>{left.toFixed(0)}h left</span><span>11p</span></div>
       <div className="relative h-[3px] rounded-full bg-white/[0.08]">
-        <div className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#FF8A3D] to-[#E26D45]" style={{ width: `${pct}%` }} />
-        <div className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_10px_#FF8A3D]" style={{ left: `${pct}%` }} />
+        <div className="absolute inset-y-0 left-0 rounded-full bg-accent" style={{ width: `${pct}%` }} />
+        <div className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white" style={{ left: `${pct}%` }} />
       </div>
     </div>
   );
@@ -334,12 +334,10 @@ export function AskBar() {
     <div className="pointer-events-none absolute inset-x-0 bottom-7 z-30 flex justify-center px-10">
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1], delay: 0.15 }}
         className="pointer-events-auto relative w-full max-w-[680px]">
-        {/* soft rainbow halo */}
-        <div aria-hidden className="absolute -inset-[1px] rounded-full bg-[linear-gradient(90deg,#FF8A3D,#FF3DA5,#8B5CF6,#3B82F6)] opacity-40 blur-[10px]" />
         <form onSubmit={(e) => { e.preventDefault(); submit(); }}
           onClick={() => ref.current?.focus()}
-          className="no-drag relative flex h-[58px] items-center gap-3 rounded-full border-[0.8px] border-white/15 bg-[#0B0B0D]/85 pr-2 pl-5 shadow-[0_20px_60px_rgba(0,0,0,.6)] backdrop-blur-xl">
-          <Sparkles size={18} className="shrink-0 text-[#F3A27F]" />
+          className="no-drag relative flex h-[58px] items-center gap-3 rounded-full border-[0.8px] border-white/15 bg-surface/85 pr-2 pl-5 shadow-[0_20px_60px_rgba(0,0,0,.6)] backdrop-blur-xl">
+          <Sparkles size={18} className="shrink-0 text-accent" />
           <input ref={ref} value={q} onChange={e => setQ(e.target.value)}
             placeholder="Ask Northstar anything about your day…"
             className="min-w-0 flex-1 bg-transparent text-[15.5px] text-ink placeholder:text-faint focus:outline-none" />
@@ -350,7 +348,7 @@ export function AskBar() {
             ) : (
               <motion.button key="go" type="submit" disabled={!q.trim()} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 aria-label="Ask"
-                className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-white text-black transition-opacity disabled:opacity-25">
+                className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-white text-accent-ink transition-opacity disabled:opacity-25">
                 <ArrowUp size={18} />
               </motion.button>
             )}

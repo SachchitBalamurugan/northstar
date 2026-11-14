@@ -34,6 +34,8 @@ const api = {
   // Camera notch widget
   notchExpand: () => ipcRenderer.send("ns:notch-expand"),
   notchCollapse: () => ipcRenderer.send("ns:notch-collapse"),
+  /** Main process shrank the notch (cursor left it); the widget should reset to collapsed. */
+  onNotchForceCollapse: (cb: () => void) => { ipcRenderer.on("ns:notch-force-collapse", cb); return () => ipcRenderer.removeListener("ns:notch-force-collapse", cb); },
   notchOpenMain: (screen: string) => ipcRenderer.send("ns:notch-open-main", screen),
   // Collapsed size, and whether the widget sits behind a real MacBook camera notch
   notchGeometry: (): { hardware: boolean; width: number; height: number; touch: boolean } => ipcRenderer.sendSync("ns:notch-geometry"),

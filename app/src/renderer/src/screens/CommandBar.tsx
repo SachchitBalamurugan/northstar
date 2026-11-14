@@ -7,7 +7,7 @@ import { useUI } from "@/store";
 import { LogoMark } from "@/components/ui";
 
 const SUGGESTIONS = ["Fill my Stripe application", "Unsubscribe from promo emails", "Find the CS 201 syllabus"];
-const EDGE = "linear-gradient(90deg,#FF8A3D,#FF3DA5,#8B5CF6,#3B82F6)";
+const EDGE = "var(--accent)";
 
 export default function CommandBar() {
   const { commandOpen, commandPrefill, closeCommand } = useUI();
@@ -58,8 +58,7 @@ export default function CommandBar() {
                 onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); run(text); } }}
                 placeholder="What can I take over for you?"
                 className="h-16 w-full bg-transparent px-5 text-[22px] tracking-[-0.015em] text-ink outline-none placeholder:text-faint placeholder:italic" />
-              <span aria-hidden className="absolute inset-x-0 bottom-0 h-[2px]" style={{ background: EDGE }} />
-              <span aria-hidden className="absolute inset-x-6 -bottom-1 h-[6px] opacity-70 blur-[8px]" style={{ background: EDGE }} />
+              <span aria-hidden className="absolute inset-x-0 bottom-0 h-px" style={{ background: EDGE }} />
             </div>
 
             {!text && steps.length === 0 && (

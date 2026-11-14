@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useUI } from "@/store";
 import { Eyebrow, PrimaryButton, SecondaryButton, TextLink } from "@/components/ui";
-import Orb from "@/three/Orb";
-import Wormhole from "@/three/Wormhole";
+import Network from "@/three/Network";
 
 const BOX = 380;
 const R = 170;
@@ -51,7 +50,7 @@ export default function Focus() {
       {visible && (
         <motion.div key="focus" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.35 }}
           className="no-drag fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden bg-black px-8">
-          <div aria-hidden className="pointer-events-none absolute inset-0" style={{ opacity: 0.35 }}><Wormhole /></div>
+          <div aria-hidden className="pointer-events-none absolute inset-0" style={{ opacity: 0.35 }}><div className="chart-grid h-full w-full" /></div>
           <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(0,0,0,0.6)_60%,#000_100%)]" />
 
           <div className="relative z-10 flex flex-col items-center">
@@ -60,7 +59,7 @@ export default function Focus() {
 
             <div className="relative flex items-center justify-center" style={{ width: BOX, height: BOX }}>
               <div className="absolute inset-0 flex items-center justify-center">
-                <Orb size={300} intensity={intensity} speed={paused ? 0.3 : 1} />
+                <Network size={300} intensity={intensity} speed={paused ? 0.3 : 1} />
               </div>
               <svg width={BOX} height={BOX} className="absolute inset-0 -rotate-90 overflow-visible">
                 <circle cx={BOX / 2} cy={BOX / 2} r={R} fill="none" strokeWidth={2} stroke="rgba(255,255,255,0.12)" />

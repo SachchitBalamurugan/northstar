@@ -98,7 +98,7 @@ export default function JobsForYou() {
                   <div className="flex items-start gap-3">
                     <button type="button" role="checkbox" aria-checked={on} aria-label={`Select ${j.title}`} onClick={() => toggle(j.id)}
                       disabled={!on && selected.length >= MAX_BATCH}
-                      className={`no-drag mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border-[0.8px] transition-colors disabled:opacity-30 ${on ? "border-accent bg-accent text-black" : "border-white/30 hover:border-white/60"}`}>
+                      className={`no-drag mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border-[0.8px] transition-colors disabled:opacity-30 ${on ? "border-accent bg-accent text-accent-ink" : "border-white/30 hover:border-white/60"}`}>
                       {on && <Check size={12} strokeWidth={3} />}
                     </button>
                     <div className="min-w-0 flex-1">
@@ -106,7 +106,7 @@ export default function JobsForYou() {
                       <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-muted">
                         <span>{j.company}</span>
                         {j.location && <><span className="text-faint">·</span><span>{j.location}</span></>}
-                        {j.remote && <span className="ml-1 rounded-full bg-emerald-400/10 px-2 py-0.5 text-[11px] text-emerald-300">Remote</span>}
+                        {j.remote && <span className="ml-1 rounded-full bg-accent/10 px-2 py-0.5 text-[11px] text-emerald-300">Remote</span>}
                       </p>
                     </div>
                   </div>
@@ -120,7 +120,7 @@ export default function JobsForYou() {
 
                   {j.summary && <p className="line-clamp-2 text-[13px] leading-relaxed text-muted">{j.summary}</p>}
                   {j.why && (
-                    <p className="flex items-start gap-2 text-[13px] leading-relaxed text-[#F3C27A]">
+                    <p className="flex items-start gap-2 text-[13px] leading-relaxed text-blue">
                       <Sparkles size={13} className="mt-[3px] shrink-0" /><span>{j.why}</span>
                     </p>
                   )}

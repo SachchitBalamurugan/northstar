@@ -71,7 +71,7 @@ function AskSyllabi({ hasCourses }: { hasCourses: boolean }) {
                       <ul className="flex flex-col gap-2">
                         {res.results.map((h, i) => (
                           <li key={h.courseId + i} className="rounded-[12px] bg-raised px-4 py-3">
-                            <p className="mb-1 text-[12.5px] text-[#F3A27F]">{h.course}</p>
+                            <p className="mb-1 text-[12.5px] text-accent">{h.course}</p>
                             <p className="line-clamp-3 text-[14px] leading-relaxed text-warm">{h.snippet}</p>
                           </li>
                         ))}

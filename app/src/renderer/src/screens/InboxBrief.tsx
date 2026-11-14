@@ -5,7 +5,7 @@ import { Window, PrimaryButton, SecondaryButton, TextLink, relTime } from "@/com
 import { getBrief, refreshBrief, replyToEmail, emailMeBrief, type Brief, type BriefItem } from "@/briefApi";
 import { useUI } from "@/store";
 
-const DOT: Record<BriefItem["importance"], string> = { high: "bg-accent", medium: "bg-[#F3C27A]", low: "bg-faint" };
+const DOT: Record<BriefItem["importance"], string> = { high: "bg-accent", medium: "bg-warn", low: "bg-faint" };
 const goApprove = () => useUI.getState().setScreen("approve");
 
 function ItemCard({ item, onDismiss }: { item: BriefItem; onDismiss: () => void }) {
@@ -33,7 +33,7 @@ function ItemCard({ item, onDismiss }: { item: BriefItem; onDismiss: () => void 
           <p className="truncate text-[15px] text-warm">{item.subject}</p>
           <p className="mt-1 text-[14px] leading-relaxed text-muted">{item.oneLine}</p>
           {item.why && (
-            <p className="mt-2 flex items-start gap-1.5 text-[12.5px] leading-relaxed text-[#F3C27A]">
+            <p className="mt-2 flex items-start gap-1.5 text-[12.5px] leading-relaxed text-blue">
               <Sparkles size={13} strokeWidth={1.75} className="mt-[3px] shrink-0" />{item.why}
             </p>
           )}

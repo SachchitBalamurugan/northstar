@@ -90,7 +90,7 @@ export default function Activity() {
   const nowMarker = (
     <li key="now" className="flex items-center gap-3 px-6 py-2" aria-label="Now">
       <span className="w-20 shrink-0 text-[11px] font-medium uppercase tracking-[0.14em] text-accent">Now</span>
-      <span className="-ml-[3px] h-2 w-2 shrink-0 rounded-full bg-accent shadow-[0_0_12px_rgba(226,109,69,0.9)]" />
+      <span className="-ml-[3px] h-2 w-2 shrink-0 rounded-full bg-accent" />
       <span className="h-px flex-1 bg-accent/40" />
       <span className="shrink-0 text-[12px] tabular-nums text-accent">{clock(now.toISOString())}</span>
     </li>
@@ -176,8 +176,8 @@ export default function Activity() {
           <Window title="Your calendar" icon={<CalendarDays size={16} />} meta={`${hoursLeft}h left today`}>
             <div className="px-6 pt-6 pb-5">
               <div className="relative h-1 w-full rounded-full bg-white/[0.06]" aria-label={`${Math.round(pct * 100)}% of the day gone`}>
-                <div className="h-full rounded-full bg-[linear-gradient(90deg,#FF8A3D,#E26D45)] transition-[width] duration-200" style={{ width: `${pct * 100}%` }} />
-                <span className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_12px_rgba(226,109,69,0.9)]"
+                <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${pct * 100}%` }} />
+                <span className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent"
                   style={{ left: `${pct * 100}%` }} />
               </div>
               <div className="relative mt-2.5 h-4">
@@ -235,7 +235,7 @@ export default function Activity() {
                       <li key={e.id} className="flex items-center gap-3 text-[14px]">
                         <span className="w-[92px] shrink-0 truncate text-[13px] text-muted">{first ? label : ""}</span>
                         <span className="w-[68px] shrink-0 text-[13px] tabular-nums text-faint">{clock(e.start)}</span>
-                        <span className={`min-w-0 flex-1 truncate ${e.northstar ? "text-[#F3A27F]" : "text-warm"}`}>{e.title}</span>
+                        <span className={`min-w-0 flex-1 truncate ${e.northstar ? "text-accent" : "text-warm"}`}>{e.title}</span>
                       </li>
                     );
                   })}
@@ -247,7 +247,7 @@ export default function Activity() {
 
           {pendingCount > 0 && (
             <TextLink onClick={() => setScreen("approve")} className="mt-5 flex items-center gap-2.5 text-[14px]">
-              <span className="h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_10px_rgba(226,109,69,0.8)]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
               {pendingCount} {pendingCount === 1 ? "thing" : "things"} waiting for your OK →
             </TextLink>
           )}

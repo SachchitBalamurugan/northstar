@@ -4,14 +4,13 @@ import { CalendarDays, FileText, Mail, StickyNote } from "lucide-react";
 import { getAuthUrl, remember } from "@/api";
 import { useUI } from "@/store";
 import { AppChip, Eyebrow, Heading, Lead, LogoMark, PrimaryButton, SecondaryButton, Window } from "@/components/ui";
-import Orb from "@/three/Orb";
-import Wormhole from "@/three/Wormhole";
+import Network from "@/three/Network";
 
 const FLOATERS = [
-  { label: "Emails", icon: <Mail size={16} className="text-[#7AA7FF]" />, pos: "left-[8%] top-[22%]", rot: -8, delay: 0 },
-  { label: "Calendar", icon: <CalendarDays size={16} className="text-[#FFB27A]" />, pos: "right-[9%] top-[18%]", rot: 6, delay: 0.8 },
-  { label: "Applications", icon: <FileText size={16} className="text-[#FF8CCB]" />, pos: "left-[12%] bottom-[20%]", rot: 5, delay: 1.4 },
-  { label: "Notes", icon: <StickyNote size={16} className="text-[#B9A2FF]" />, pos: "right-[11%] bottom-[24%]", rot: -6, delay: 0.4 },
+  { label: "Emails", icon: <Mail size={16} className="text-blue" />, pos: "left-[8%] top-[22%]", rot: -8, delay: 0 },
+  { label: "Calendar", icon: <CalendarDays size={16} className="text-accent" />, pos: "right-[9%] top-[18%]", rot: 6, delay: 0.8 },
+  { label: "Applications", icon: <FileText size={16} className="text-cyan" />, pos: "left-[12%] bottom-[20%]", rot: 5, delay: 1.4 },
+  { label: "Notes", icon: <StickyNote size={16} className="text-warn" />, pos: "right-[11%] bottom-[24%]", rot: -6, delay: 0.4 },
 ];
 
 export default function Onboarding() {
@@ -39,7 +38,7 @@ export default function Onboarding() {
 
   return (
     <div className="drag relative flex h-full items-center justify-center overflow-hidden bg-black px-12">
-      <div aria-hidden className="pointer-events-none absolute inset-0" style={{ opacity: 0.55 }}><Wormhole /></div>
+      <div aria-hidden className="pointer-events-none absolute inset-0" style={{ opacity: 0.55 }}><div className="chart-grid h-full w-full" /></div>
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0.35)_0%,rgba(0,0,0,0.75)_55%,#000_100%)]" />
 
       <AnimatePresence>
@@ -94,7 +93,7 @@ export default function Onboarding() {
             )}
             {step === 3 && (
               <>
-                <div className="-mt-4 mb-2"><Orb size={300} /></div>
+                <div className="-mt-4 mb-2"><Network size={300} /></div>
                 <Heading className="text-center">You're set{userName ? `, ${userName.trim().split(/\s+/)[0]}` : ""}.</Heading>
                 <Lead className="-mt-6 max-w-[440px]">Northstar is catching up on your inbox. Your first plan is ready in a minute.</Lead>
                 <div className="mt-10"><PrimaryButton onClick={finishOnboarding}>Open Northstar</PrimaryButton></div>

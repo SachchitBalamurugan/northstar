@@ -155,6 +155,8 @@ export default function Notch() {
     setExpanded(true);
   };
   const collapse = useCallback(() => { clearLeave(); setExpanded(false); }, []);
+  // The main process collapses the window itself if the cursor wandered off; mirror that here.
+  useEffect(() => (window as any).northstar?.onNotchForceCollapse?.(() => { clearLeave(); setExpanded(false); }), []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") collapse(); };
@@ -216,7 +218,7 @@ export default function Notch() {
             animate={{ scaleY: 1, scaleX: 1, opacity: 1, transition: { duration: 0.22, ease: "easeOut" } }}
             exit={{ ...closed, opacity: geo.hardware ? 1 : 0, transition: { duration: 0.18, ease: "easeIn" } }}
             style={{ transformOrigin: "top center", width: PANEL.width, height: PANEL.height + inset, paddingTop: inset }}
-            className="rounded-b-[24px] bg-black border border-white/10 border-t-0 shadow-2xl overflow-hidden text-[13px] text-ink"
+            className="rounded-b-[24px] bg-black border border-line border-t-0 shadow-2xl overflow-hidden text-[13px] text-ink"
           >
             <motion.div
               initial={{ opacity: 0, y: -4 }}
@@ -235,7 +237,7 @@ export default function Notch() {
                   </div>
                   {touchNote && <div className="text-[10.5px] text-faint truncate" title={touchNote}>{touchNote}</div>}
                 </div>
-                <button onClick={() => open("dashboard")} className="shrink-0 flex items-center gap-1 text-[11px] text-muted hover:text-ink border border-white/10 rounded-full px-2.5 py-1 transition-colors">
+                <button onClick={() => open("dashboard")} className="shrink-0 flex items-center gap-1 text-[11px] text-muted hover:text-ink border border-line rounded-full px-2.5 py-1 transition-colors">
                   Open <ArrowUpRight size={12} />
                 </button>
               </div>
@@ -248,7 +250,7 @@ export default function Notch() {
                       <div className="truncate font-medium">{next.title}</div>
                       <div className="truncate text-[11.5px] text-muted">{next.why}</div>
                     </div>
-                    <button onClick={() => open("now")} className="shrink-0 rounded-full px-3 py-1 text-[11.5px] font-medium text-black" style={{ background: "#E26D45" }}>Start</button>
+                    <button onClick={() => open("now")} className="shrink-0 rounded-full px-3 py-1 text-[11.5px] font-semibold text-accent-ink" style={{ background: "var(--accent)" }}>Start</button>
                   </div>
                 ) : <div className="text-faint truncate">Nothing pressing.</div>}
               </Section>
@@ -290,10 +292,10 @@ export default function Notch() {
                 {loading || !data ? <Skel w="45%" /> : (
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-[12.5px] truncate">
-                      {data.pending ? <><span className="font-medium" style={{ color: "#E26D45" }}>{data.pending}</span> waiting on you</> : <span className="text-faint">All caught up</span>}
+                      {data.pending ? <><span className="font-medium" style={{ color: "var(--accent)" }}>{data.pending}</span> waiting on you</> : <span className="text-faint">All caught up</span>}
                     </span>
                     {data.pending > 0 && (
-                      <button onClick={() => open("approve")} className="shrink-0 rounded-full border border-white/15 px-3 py-0.5 text-[11.5px] hover:bg-white/10 transition-colors">Review</button>
+                      <button onClick={() => open("approve")} className="shrink-0 rounded-full border border-line-strong px-3 py-0.5 text-[11.5px] hover:bg-white/10 transition-colors">Review</button>
                     )}
                   </div>
                 )}
@@ -301,7 +303,7 @@ export default function Notch() {
 
               {/* Hand off */}
               <div className="mt-auto min-w-0">
-                <div className="flex items-center gap-2 rounded-full bg-white/[0.06] border border-white/10 px-3 h-8 focus-within:border-white/25">
+                <div className="flex items-center gap-2 rounded-full bg-white/[0.06] border border-line px-3 h-8 focus-within:border-accent/40">
                   <input
                     value={task}
                     onChange={(e) => setTask(e.target.value)}
@@ -313,7 +315,7 @@ export default function Notch() {
                   <CornerDownLeft size={13} className="text-faint shrink-0" />
                 </div>
                 <div className="h-4 mt-1 px-3 text-[11px] text-muted truncate">
-                  {step && <>{running && <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle animate-pulse" style={{ background: "#E26D45" }} />}{step}</>}
+                  {step && <>{running && <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle animate-pulse" style={{ background: "var(--accent)" }} />}{step}</>}
                 </div>
               </div>
             </motion.div>

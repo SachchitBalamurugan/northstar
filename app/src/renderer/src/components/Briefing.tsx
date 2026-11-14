@@ -43,7 +43,7 @@ export default function Briefing() {
                 <span className="w-5 pt-0.5 text-[12px] tabular-nums text-faint">{String(n + 1).padStart(2, "0")}</span>
                 <span className="min-w-0 flex-1">
                   <span className="mb-1 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.08em]">
-                    <span className="text-[#F3A27F]">{KIND[i.kind] ?? "Next"}</span>
+                    <span className="text-accent">{KIND[i.kind] ?? "Next"}</span>
                     {when(i) && <><span className="text-faint">·</span><span className={`normal-case tracking-normal tabular-nums ${soon(i.dueAt) ? "text-accent" : "text-faint"}`}>{when(i)}</span></>}
                     {estimates && typeof i.minutes === "number" && <><span className="text-faint">·</span><span className="normal-case tracking-normal tabular-nums text-faint">about {i.minutes} min</span></>}
                   </span>

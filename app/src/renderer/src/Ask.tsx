@@ -10,7 +10,7 @@ import { LogoMark, PrimaryButton, TextLink } from "@/components/ui";
 import type { AskStep } from "@/local-types";
 
 const SUGGESTIONS = ["Fill my Stripe application", "Unsubscribe from promo emails", "Find the CS 101 syllabus"];
-const EDGE = "linear-gradient(90deg,#FF8A3D,#FF3DA5,#8B5CF6,#3B82F6)";
+const EDGE = "var(--accent)";
 
 /** Browser fallback: when the hash leaves #ask (maximize), swap this tab over to the full app. */
 export function AskRoot({ app }: { app: ReactNode }) {
@@ -100,8 +100,7 @@ export default function Ask() {
             <Maximize2 size={15} strokeWidth={1.75} />
           </button>
         </div>
-        <span aria-hidden className="absolute inset-x-0 bottom-0 h-[2px]" style={{ background: EDGE }} />
-        <span aria-hidden className="absolute inset-x-6 -bottom-1 h-[6px] opacity-70 blur-[8px]" style={{ background: EDGE }} />
+        <span aria-hidden className="absolute inset-x-0 bottom-0 h-px" style={{ background: EDGE }} />
       </div>
 
       {idleEmpty && (

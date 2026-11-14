@@ -55,7 +55,7 @@ export default function RunPanel({ run }: { run: RunState }) {
         {run.filters.length > 0 && <div className="flex flex-wrap gap-1.5">{run.filters.map(f => <Chip key={f}>{f}</Chip>)}</div>}
       </div>
       <div className="mb-5 h-[3px] overflow-hidden rounded-full bg-white/[0.06]">
-        <motion.div className="h-full rounded-full bg-gradient-to-r from-[#E26D45] to-[#F3A27F]" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.5, ease: "easeOut" }} />
+        <motion.div className="h-full rounded-full bg-accent" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.5, ease: "easeOut" }} />
       </div>
       {total === 0 ? (
         <div className="flex items-center gap-3 rounded-[14px] border-[0.8px] border-line bg-white/[0.02] p-4">

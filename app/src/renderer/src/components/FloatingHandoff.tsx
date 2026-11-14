@@ -3,7 +3,6 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { motion, useMotionValue, animate } from "framer-motion";
 import { GripVertical } from "lucide-react";
-import { Kbd } from "./ui";
 
 const KEY = "ns.handoffPos";
 
@@ -33,15 +32,14 @@ export default function FloatingHandoff({ bounds, onOpen }: { bounds: RefObject<
       onDoubleClick={reset}
       className="no-drag absolute right-8 bottom-7 z-40 isolate touch-none select-none"
       title="Drag to move · double-click to reset">
-      <span aria-hidden className="cta-glow" />
-      <div className="relative flex h-[50px] items-center rounded-full bg-white pr-5 pl-2 text-black shadow-[0_18px_50px_rgba(0,0,0,.55)]">
-        <span className="flex h-full cursor-grab items-center px-1.5 text-black/35 active:cursor-grabbing" aria-label="Drag handle">
+      <div className="relative flex h-[46px] items-center rounded-[10px] bg-accent pr-4 pl-1.5 text-accent-ink shadow-[0_12px_32px_rgba(0,0,0,.35)]">
+        <span className="flex h-full cursor-grab items-center px-1.5 text-accent-ink/45 active:cursor-grabbing" aria-label="Drag handle">
           <GripVertical size={16} />
         </span>
         <button
           onClick={() => { if (!dragged.current) onOpen(); }}
-          className="flex h-full items-center gap-2 text-[14.5px] font-medium tracking-[-0.01em]">
-          Hand off a task <Kbd>Ctrl Space</Kbd>
+          className="flex h-full items-center gap-2 text-[14.5px] font-semibold tracking-[-0.01em]">
+          Hand off a task <kbd className="rounded-[5px] border border-accent-ink/20 bg-accent-ink/10 px-1.5 py-0.5 font-mono text-[10.5px] text-accent-ink/70">Ctrl Space</kbd>
         </button>
       </div>
     </motion.div>

@@ -61,7 +61,7 @@ export default function GoogleConnect({ onSynced }: { /** Called after a sync so
 
   return (
     <div role="status" className="mb-8 flex min-h-[44px] flex-wrap items-center gap-x-4 gap-y-1 rounded-[12px] border-[0.8px] border-line bg-surface px-4 py-2.5 text-[13.5px]">
-      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${connected ? "bg-emerald-400" : "bg-white/25"}`} />
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${connected ? "bg-accent" : "bg-white/25"}`} />
       {state === "waiting" ? (
         <>
           <span className="flex min-w-0 flex-1 items-center gap-2 text-muted"><Loader2 size={13} className="animate-spin text-accent" /> Waiting for you to finish signing in with Google…</span>
@@ -81,7 +81,7 @@ export default function GoogleConnect({ onSynced }: { /** Called after a sync so
         <>
           <span className="min-w-0 flex-1 text-muted">{status.mock ? "Showing sample mail. Connect Gmail and Calendar to see yours." : "Your inbox is empty until you connect Gmail and Calendar."}</span>
           <button onClick={connect}
-            className="no-drag shrink-0 rounded-full bg-white px-3.5 py-1.5 text-[12.5px] font-medium text-black transition-opacity duration-150 hover:opacity-90">
+            className="no-drag shrink-0 rounded-[10px] bg-accent px-3.5 py-1.5 text-[12.5px] font-medium text-accent-ink transition-opacity duration-150 hover:opacity-90">
             Connect
           </button>
         </>
