@@ -19,6 +19,9 @@ export default function Bubble() {
     // Pop in on launch: scale up from nothing with a soft overshoot.
     press.set({ scale: 0, opacity: 0, rotate: -40 });
     press.start({ scale: 1, opacity: 1, rotate: 0, transition: { type: "spring", stiffness: 260, damping: 16, mass: 0.9, delay: 0.15 } });
+    // Never leave the orb invisible: if the pop-in animation was paused (window throttled), show it anyway.
+    const t = setTimeout(() => press.set({ scale: 1, opacity: 1, rotate: 0 }), 2000);
+    return () => clearTimeout(t);
   }, []);
 
   const onDown = (e: React.PointerEvent) => {

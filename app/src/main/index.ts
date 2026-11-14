@@ -151,7 +151,7 @@ function createBubble() {
     frame: false, transparent: true, backgroundColor: "#00000000", hasShadow: false,
     resizable: false, maximizable: false, minimizable: false, fullscreenable: false,
     skipTaskbar: true, alwaysOnTop: true,
-    webPreferences: { preload: join(__dirname, "../preload/index.js"), sandbox: false },
+    webPreferences: { preload: join(__dirname, "../preload/index.js"), sandbox: false, backgroundThrottling: false },
   });
   bubble.setAlwaysOnTop(true, "screen-saver");
   bubble.setVisibleOnAllWorkspaces(true);
@@ -505,6 +505,9 @@ function registerIpc() {
 }
 
 // ---------- lifecycle ----------
+// Dev only: NS_DEBUG_PORT=9333 exposes the renderers on 127.0.0.1 for inspection.
+if (process.env.NS_DEBUG_PORT) { app.commandLine.appendSwitch("remote-debugging-port", process.env.NS_DEBUG_PORT); app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1"); }
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
