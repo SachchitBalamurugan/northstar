@@ -61,7 +61,7 @@ body {
 }
 ::selection { background: rgba(61, 220, 151, 0.3); }
 * { scrollbar-width: thin; scrollbar-color: rgba(148,180,200,.16) transparent; }
-:focus-visible { outline: 2px solid rgba(61, 220, 151, 0.4); outline-offset: 2px; }
+@layer base { :focus-visible { outline: 2px solid rgba(61, 220, 151, 0.4); outline-offset: 2px; } }
 
 .drag { -webkit-app-region: drag; }
 .no-drag { -webkit-app-region: no-drag; }

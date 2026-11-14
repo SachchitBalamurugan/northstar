@@ -8,6 +8,10 @@ Not affiliated with Sentient OS. Built with Brian Huang and Cesar Cruz.
 
 ## Demo
 
+The floating orb doing a real task in my own Chrome: one approval, then it does the work and answers.
+
+![Handing off a task from the orb](docs/demo/orb-task.png)
+
 Approving what Northstar prepared (a reply, a filled application, a study block, low-risk cleanup), then finding internships that match my profile and auto-filling three of them at once:
 
 ![Approvals and internship matching](docs/demo/approvals-jobs.gif)

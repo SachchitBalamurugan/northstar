@@ -119,7 +119,7 @@ export default function Ask() {
           <input ref={input} value={text} onChange={e => onType(e.target.value)} autoFocus readOnly={running}
             onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); run(text); } }}
             placeholder="What can I take over for you?" aria-label="Ask Northstar"
-            className="h-full min-w-0 flex-1 bg-transparent text-[20px] tracking-[-0.015em] text-ink outline-none placeholder:text-faint placeholder:italic" />
+            className="h-full min-w-0 flex-1 bg-transparent text-[20px] tracking-[-0.015em] text-ink outline-none focus-visible:outline-none placeholder:text-faint placeholder:italic" />
           <button aria-label="Open Northstar" title="See everything: automations and your calendar" onClick={() => openMain("activity")}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted transition-colors duration-150 hover:bg-white/10 hover:text-ink">
             <Maximize2 size={15} strokeWidth={1.75} />
@@ -152,7 +152,10 @@ export default function Ask() {
                 {last && running
                   ? <Loader2 size={15} className="shrink-0 animate-spin text-accent" />
                   : <Check size={15} className="shrink-0 text-accent" />}
-                <span className="truncate">{s.detail}</span>
+                {/* The final answer wraps in full (markdown links shown as their text); progress steps stay one line. */}
+                {s.action === "done" && last
+                  ? <span className="whitespace-pre-line">{s.detail.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/ (\d+)\. /g, "\n$1. ")}</span>
+                  : <span className="truncate">{s.detail}</span>}
               </motion.li>
             );
           })}
@@ -224,7 +227,7 @@ function CheckpointCard({ cp, answer, setAnswer, sending, decide }: {
       {cp.kind === "question" && (
         <textarea autoFocus value={answer} onChange={e => setAnswer(e.target.value)} rows={2}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); decide("answer"); } }}
-          placeholder="Type your answer" className="mt-2.5 w-full resize-none rounded-[10px] border-[0.8px] border-line bg-raised px-3 py-2 text-[14px] text-ink outline-none placeholder:text-faint focus:border-accent" />
+          placeholder="Type your answer" className="mt-2.5 w-full resize-none rounded-[10px] border-[0.8px] border-line bg-raised px-3 py-2 text-[14px] text-ink outline-none focus-visible:outline-none placeholder:text-faint focus:border-accent" />
       )}
       <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
         {cp.kind === "plan" && <>
