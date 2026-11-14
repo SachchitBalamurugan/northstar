@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Northstar Bridge",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Lets the Northstar desktop app work in your own signed-in Chrome window. Talks only to Northstar on this computer (127.0.0.1:7703).",
   "background": { "service_worker": "background.js" },
   "permissions": ["tabs", "scripting", "alarms", "storage", "debugger"],

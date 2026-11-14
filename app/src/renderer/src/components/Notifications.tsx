@@ -3,8 +3,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Bell, Clock, CornerDownLeft, RefreshCw } from "lucide-react";
 import { useUI } from "../store";
 import { relTime } from "./ui";
+import { SERVICES } from "../api";
 
-const INBOX = "http://127.0.0.1:7702";
+const INBOX = SERVICES.inbox;
 
 interface Notice {
   id: string;

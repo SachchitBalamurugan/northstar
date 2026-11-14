@@ -3,7 +3,13 @@ import type { Insights, Proposal, Triage, CalEvent, KnowledgeFile, SidekickStep,
 import { mockInsights, mockProposals, mockTriage, mockToday, mockKnowledge, mockRuns, mockWeek } from "./mocks";
 import type { Run } from "./local-types";
 
-export const SERVICES = { memory: "http://127.0.0.1:7701", inbox: "http://127.0.0.1:7702", actions: "http://127.0.0.1:7703" } as const;
+// "?demo" in the URL (web preview only) talks to no service at all, so the UI shows sample data, never real mail.
+export const DEMO_ONLY = typeof location !== "undefined" && new URLSearchParams(location.search).has("demo");
+export const SERVICES = (DEMO_ONLY
+  ? { memory: "http://127.0.0.1:9", inbox: "http://127.0.0.1:9", actions: "http://127.0.0.1:9" }
+  : { memory: "http://127.0.0.1:7701", inbox: "http://127.0.0.1:7702", actions: "http://127.0.0.1:7703" }) as {
+  readonly memory: string; readonly inbox: string; readonly actions: string;
+};
 export type ServiceName = keyof typeof SERVICES;
 
 const online: Record<ServiceName, boolean> = { memory: false, inbox: false, actions: false };

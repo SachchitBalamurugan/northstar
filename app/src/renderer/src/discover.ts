@@ -148,9 +148,9 @@ function results(topic: Topic, opts: ResearchOptions): Omit<DiscoverResult, "id"
 /* Real backend: memory service POST /discover/run {focus}             */
 /* (MOCK=0: OpenAI web research over the student's memory; MOCK=1: fixtures) */
 /* ------------------------------------------------------------------ */
-import { checkHealth, isDemo } from "./api";
+import { checkHealth, isDemo, SERVICES } from "./api";
 
-const MEMORY = "http://127.0.0.1:7701";
+const MEMORY = SERVICES.memory;
 interface BackendItem { id: string; title: string; summary: string; why: string; category: "opportunity" | "resource" | "event" | "reading" | "idea";
   url?: string; sourceLabel?: string; deadline?: string; nextStep?: string; confidence?: number }
 

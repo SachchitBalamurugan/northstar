@@ -234,6 +234,7 @@ async function work(run: TaskRun, d: Driver, plan: z.infer<typeof PlanSchema>, s
   let lastFail = "";
   let fails = 0;
   let warnedOld = false;
+  const recent: string[] = [];
   const system = [
     "You are Northstar, a careful browser agent working in the student's own signed-in Chrome. The student approved this plan:",
     ...plan.steps.map((s, i) => `${i + 1}. ${s}`),
@@ -245,6 +246,7 @@ async function work(run: TaskRun, d: Driver, plan: z.infer<typeof PlanSchema>, s
     '- read_tab: "text" = words from another open tab\'s title, or its URL. You get that tab\'s full content back without leaving this tab (Google Docs/Sheets/Slides included).',
     '- switch_tab: "text" = words from an open tab\'s title, or its URL. Continue working in that tab.',
     "Google Docs/Sheets/Slides: the page's \"Visible text\" already holds the file's real content.",
+    "\"Visible text\" is only the part of the page around the screen. For long pages (lists, tables, READMEs, articles) use read_tab with the current page's URL once to get the whole text, instead of scrolling many times.",
     '- ask: "text" = a short question when you need a fact about the student you were not given (never guess personal facts).',
     '- done: finished or impossible; "reason" is the outcome for the student.',
     'Unused fields are null. "reason" is one short friendly sentence the student sees.',
@@ -281,10 +283,25 @@ async function work(run: TaskRun, d: Driver, plan: z.infer<typeof PlanSchema>, s
     }
 
     let detail = step.reason;
+    // Going in circles (the same step again and again, even when it "works"): nudge, then stop.
+    const sig = `${step.action}|${step.index ?? ""}|${step.url ?? ""}|${step.text ?? ""}`;
+    recent.push(sig);
+    const repeats = recent.slice(-6).filter((x) => x === sig).length;
+    if (repeats === 3) notes.push(`You already did "${step.action} ${clip(step.url ?? step.text ?? String(step.index ?? ""), 60)}" several times. Try something different, or finish with what you have.`);
+    if (repeats >= 5) {
+      run.emit({ action: "done", detail: "I was going in circles, so I stopped. Your tab is left as is." });
+      return "stopped: repeating itself";
+    }
     try {
       switch (step.action) {
         case "goto": {
           if (!step.url || !/^https?:\/\//i.test(step.url)) throw new Error(`invalid url "${step.url}"`);
+          const same = (u: string) => u.replace(/^https?:\/\/(www\.)?/i, "").replace(/[#?].*$/, "").replace(/\/+$/, "").toLowerCase();
+          if (snap.url && same(snap.url) === same(step.url)) {
+            notes.push(`You are already on ${step.url}. Do not goto it again: scroll, click, or read_tab "${step.url}" to get the whole page's text at once.`);
+            detail = "Already on that page";
+            break;
+          }
           tab = await d.open(step.url, "exact");
           await tab.settle();
           detail = `Opened ${clip(step.url, 70)}`;

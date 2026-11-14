@@ -1,6 +1,26 @@
 // LinkedIn import (actions :7703), job matching (memory :7701) and batch auto-apply (actions :7703).
 // See contracts/jobs.md. Calls return friendly errors instead of throwing.
-import { SERVICES } from "./api";
+import { DEMO_ONLY, SERVICES } from "./api";
+
+// ---- "?demo" preview: sample matches, so the flow can be shown without real data ----
+const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+const DEMO_JOBS: Job[] = [
+  { id: "d1", title: "Software Engineering Intern, Summer 2027", company: "Stripe", location: "San Francisco, CA", url: "https://example.com/stripe",
+    summary: "Build payments infrastructure used by millions of businesses.", why: "Matches your TypeScript and backend work on Northstar's services, plus your systems coursework.",
+    skills: ["TypeScript", "APIs", "Distributed systems"], matchScore: 0.94, deadline: new Date(Date.now() + 4 * 864e5).toISOString() },
+  { id: "d2", title: "ML Research Intern", company: "Genentech", location: "South San Francisco, CA", url: "https://example.com/gene",
+    summary: "Apply deep learning to medical imaging and protein data.", why: "Your bioengineering major and medical imaging research line up directly.",
+    skills: ["PyTorch", "Medical imaging", "Python"], matchScore: 0.91, deadline: new Date(Date.now() + 9 * 864e5).toISOString() },
+  { id: "d3", title: "Product Engineering Intern", company: "Notion", location: "San Francisco, CA", url: "https://example.com/notion",
+    summary: "Ship user-facing features across web and desktop.", why: "You built an Electron + React desktop app end to end.",
+    skills: ["React", "Electron", "Product sense"], matchScore: 0.88 },
+  { id: "d4", title: "Software Engineer Intern, AI Platform", company: "Databricks", location: "Mountain View, CA", url: "https://example.com/dbx",
+    summary: "Work on tools for building and serving LLM agents.", why: "Your agent work (browser automation, tool use, memory) is exactly this team's area.",
+    skills: ["LLM agents", "Python", "Infra"], matchScore: 0.86, remote: false },
+  { id: "d5", title: "Bioengineering Research Intern", company: "Arc Institute", location: "Palo Alto, CA", url: "https://example.com/arc",
+    summary: "Computational biology in a wet-lab + ML team.", why: "Bioengineering plus ML experience; they ask for both.",
+    skills: ["Biology", "ML", "Python"], matchScore: 0.82 },
+];
 
 export interface LinkedInProfile {
   url: string; name: string; headline: string; location: string; about: string;
@@ -61,6 +81,7 @@ export async function importLinkedIn(url: string): Promise<ImportResult> {
 }
 
 export async function getLinkedIn(): Promise<LinkedInProfile | null> {
+  if (DEMO_ONLY) return null;
   try { return await call<LinkedInProfile | null>(SERVICES.actions, "/linkedin", undefined, 4000); } catch { return null; }
 }
 
@@ -71,16 +92,22 @@ const normJobs = (r: any): JobsResponse => ({
 });
 
 export async function getJobs(): Promise<JobsResult> {
+  if (DEMO_ONLY) return EMPTY_JOBS;
   try { return normJobs(await call<any>(SERVICES.memory, "/jobs", undefined, 4000)); }
   catch (e) { return { ...EMPTY_JOBS, error: friendly(e, "Loading jobs", "memory") }; }
 }
 
 export async function searchJobs(focus?: string): Promise<JobsResult> {
+  if (DEMO_ONLY) { await wait(2500); return { generatedAt: new Date().toISOString(), basedOn: ["Bioengineering", "TypeScript", "ML research", "Bay Area"], jobs: DEMO_JOBS }; }
   try { return normJobs(await call<any>(SERVICES.memory, "/jobs/search", post(focus ? { focus } : {}), 180_000)); }
   catch (e) { return { ...EMPTY_JOBS, error: friendly(e, "Job search", "memory") }; }
 }
 
 export async function applyBatch(jobs: { url: string; title: string; company: string }[]): Promise<ApplyBatchResult> {
+  if (DEMO_ONLY) {
+    await wait(3500);
+    return { results: jobs.slice(0, 5).map((j, i) => ({ url: j.url, title: j.title, company: j.company, ok: true, proposalId: `demo-${i}`, filled: 14 - i, needsYou: i % 2 })) };
+  }
   try {
     const r = await call<any>(SERVICES.actions, "/apply/batch", post({ jobs: jobs.slice(0, 5).map(j => ({ url: j.url, title: j.title, company: j.company })) }), 600_000);
     return { results: Array.isArray(r?.results) ? r.results : [] };

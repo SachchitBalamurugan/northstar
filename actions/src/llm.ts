@@ -31,7 +31,7 @@ export async function complete(args: CompleteArgs<any>): Promise<unknown> {
   if (!llmAvailable()) throw new Error("LLM unavailable (MOCK=1 or OPENAI_API_KEY missing)");
   const model = args.tier === "smart" ? MODEL_SMART : MODEL_FAST;
   if (!model) throw new Error(`OPENAI_MODEL_${args.tier.toUpperCase()} is not set`);
-  client ??= new OpenAI({ apiKey: OPENAI_API_KEY });
+  client ??= new OpenAI({ apiKey: OPENAI_API_KEY, timeout: 90_000, maxRetries: 3 });
 
   const userContent: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [
     { type: "text", text: args.input },

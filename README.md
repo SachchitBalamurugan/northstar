@@ -6,6 +6,18 @@ Sentient OS launched an AI desktop assistant for the Mac a few days before our h
 
 Not affiliated with Sentient OS. Built with Brian Huang and Cesar Cruz.
 
+## Demo
+
+Approving what Northstar prepared (a reply, a filled application, a study block, low-risk cleanup), then finding internships that match my profile and auto-filling three of them at once:
+
+![Approvals and internship matching](docs/demo/approvals-jobs.gif)
+
+A quick tour: dashboard, approval queue, inbox, knowledge, focus mode and the calendar:
+
+![App tour](docs/demo/app-tour.gif)
+
+Both clips use the app's demo data so no real inbox shows up. Full video: [northstar-demo.mp4](docs/demo/northstar-demo.mp4).
+
 ![How Northstar fits together](site/tech-stack.png)
 
 ## What it does

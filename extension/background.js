@@ -145,7 +145,19 @@ function pageSnapshot(maxEls) {
     'a[href],button,input:not([type=hidden]),select,textarea,summary,[contenteditable=""],[contenteditable=true],[role=button],[role=link],[role=tab],[role=checkbox],[role=radio],[role=menuitem],[role=option],[role=combobox],[role=textbox],[onclick],.kix-appview-editor,canvas';
   const out = [];
   const clip = (s, n) => (s || "").replace(/\s+/g, " ").trim().slice(0, n);
+  // Long pages: prefer controls on or near the screen, then fill up with the rest in page order.
+  const all = [];
   for (const el of document.querySelectorAll(sel)) {
+    if (all.length >= 1500) break;
+    const r0 = el.getBoundingClientRect();
+    if (r0.width < 1 || r0.height < 1) continue;
+    all.push(el);
+  }
+  const near = all.filter((el) => { const r = el.getBoundingClientRect(); return r.bottom > -150 && r.top < innerHeight * 1.6; });
+  const pick = new Set(near.slice(0, maxEls));
+  for (const el of all) { if (pick.size >= maxEls) break; pick.add(el); }
+  for (const el of all) {
+    if (!pick.has(el)) continue;
     if (out.length >= maxEls) break;
     const r = el.getBoundingClientRect();
     const cs = getComputedStyle(el);
@@ -183,7 +195,27 @@ function pageSnapshot(maxEls) {
     url: location.href,
     title: document.title,
     elements: out,
-    text: clip(document.body ? document.body.innerText : "", 3000),
+    // The text around where the page is scrolled to (not always the top), so scrolling shows new content.
+    text: (() => {
+      if (!document.body) return "";
+      const parts = [];
+      let len = 0, lastCell = null;
+      const top = -innerHeight * 0.3, bot = innerHeight * 2.2;
+      const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = w.nextNode()) && len < 4500) {
+        const t = node.nodeValue.replace(/\s+/g, " ").trim();
+        const p = node.parentElement;
+        if (!t || !p || /^(SCRIPT|STYLE|NOSCRIPT)$/.test(p.tagName)) continue;
+        const r = p.getBoundingClientRect();
+        if (r.height === 0 || r.bottom < top || r.top > bot) continue;
+        const cell = p.closest("td,th,li,p,h1,h2,h3,h4,tr");
+        parts.push((cell !== lastCell && parts.length ? (cell && cell.tagName === "TD" ? " | " : "\n") : " ") + t);
+        lastCell = cell;
+        len += t.length + 2;
+      }
+      return parts.join("").trim().slice(0, 4500);
+    })(),
     scroll: { y: Math.round(scrollY), max: Math.max(0, document.documentElement.scrollHeight - innerHeight) },
   };
 }
@@ -453,6 +485,10 @@ async function handle(cmd, a) {
       return true;
     case "page.key":
       await realKey(a.tabId, a.key);
+      return true;
+    case "ext.reload":
+      // Lets Northstar pick up a new version of this extension without a trip to chrome://extensions.
+      setTimeout(() => chrome.runtime.reload(), 200);
       return true;
     case "debugger.release":
       await detachAll();
