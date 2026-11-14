@@ -12,6 +12,10 @@ The floating orb doing a real task in my own Chrome: one approval, then it does 
 
 ![Handing off a task from the orb](docs/demo/orb-task.png)
 
+Same task on my screen: the orb and its popup float over Chrome while it works in the tab I already had open.
+
+![The orb popup over Chrome after finishing the task](docs/demo/orb-live.png)
+
 Approving what Northstar prepared (a reply, a filled application, a study block, low-risk cleanup), then finding internships that match my profile and auto-filling three of them at once:
 
 ![Approvals and internship matching](docs/demo/approvals-jobs.gif)
