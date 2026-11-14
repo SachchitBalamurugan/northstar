@@ -36,7 +36,7 @@ const PlanSchema = z.object({
 });
 
 const StepSchema = z.object({
-  action: z.enum(["goto", "click", "type", "select", "scroll", "read_doc", "ask", "done"]),
+  action: z.enum(["goto", "click", "type", "select", "scroll", "key", "write", "read_tab", "switch_tab", "ask", "done"]),
   index: z.number().nullable(),
   text: z.string().nullable(),
   url: z.string().nullable(),
@@ -102,9 +102,33 @@ function answeredText(kind: CheckpointKind, r: CheckpointResult): string {
   return "Approved. Doing it now.";
 }
 
-// ---------------- Google Docs (through the inbox service's Google connection) ----------------
+// ---------------- reading other open tabs (Docs, Sheets, any page) ----------------
 
-async function readDoc(ref: string): Promise<string> {
+/**
+ * Text of an open tab that matches `ref` (a URL, or words from its title). Google Docs/Sheets/Slides come
+ * back as their real content through the extension, using the student's own login: no Google API needed.
+ * Only when nothing is open does it fall back to the optional Docs API (if Google Docs was connected).
+ */
+async function readOpenTab(d: Driver, ref: string, back: Tab): Promise<string> {
+  const r = ref.trim();
+  let hit: Awaited<ReturnType<Driver["find"]>> = null;
+  const tabs = await d.list().catch(() => []);
+  const byUrl = /^https?:\/\//i.test(r) ? tabs.find((t) => t.url.split("#")[0] === r.split("#")[0] || t.url.startsWith(r)) : undefined;
+  if (byUrl) hit = await d.find([byUrl.url]).catch(() => null);
+  if (!hit) hit = await d.find(keywords(r)).catch(() => null);
+  if (hit) {
+    const t = await hit.tab.readText();
+    await back.focus();
+    return `Tab "${clip(t.title || hit.title, 80)}" (${t.kind === "page" ? "page text" : `Google ${t.kind} content`}):\n${clip(t.text, 8000)}`;
+  }
+  try {
+    return await readDocApi(r);
+  } catch {
+    return `Nothing open matches "${clip(r, 60)}". Open it first (goto its link, or https://drive.google.com/drive/search?q=${encodeURIComponent(r)} to find a Google Doc), then read it.`;
+  }
+}
+
+async function readDocApi(ref: string): Promise<string> {
   const m = /\/document\/d\/([\w-]{20,})/.exec(ref) ?? /^([\w-]{25,})$/.exec(ref.trim());
   let id = m?.[1];
   let name = "";
@@ -195,15 +219,32 @@ export async function runTask(run: TaskRun): Promise<string> {
 
   // 2. Work
   let tab = await pickStartTab(d, run, plan, active);
+  try {
+    return await work(run, d, plan, tab, allowSubmit, about);
+  } finally {
+    await d.release(); // drops Chrome's "being debugged" bar as soon as the task ends
+  }
+}
+
+async function work(run: TaskRun, d: Driver, plan: z.infer<typeof PlanSchema>, startTab: Tab, allowSubmitAtStart: boolean, about: string): Promise<string> {
+  let tab = startTab;
+  let allowSubmit = allowSubmitAtStart;
   const history: string[] = [];
   const notes: string[] = [];
+  let lastFail = "";
+  let fails = 0;
+  let warnedOld = false;
   const system = [
     "You are Northstar, a careful browser agent working in the student's own signed-in Chrome. The student approved this plan:",
     ...plan.steps.map((s, i) => `${i + 1}. ${s}`),
     "",
     "Each turn you get the current page (URL, title, indexed interactive elements with their current values, visible text) and pick ONE action:",
     '- goto: "url" absolute. - click: "index". - type: "index" + "text" (replaces the field\'s content). - select: "index" + "text" (option label, or true/false for a checkbox).',
-    '- scroll: "text" = "down" or "up". - read_doc: "text" = a Google Doc name, link or id; you get its text back (use it for Google Docs content).',
+    '- scroll: "text" = "down" or "up". - key: "text" = a key or combo ("Enter", "Tab", "Escape", "ctrl+End", "ctrl+a").',
+    '- write: "text" inserted at the cursor. Use it in Google Docs/Sheets and other editors after clicking into the document area (ctrl+End first to add at the end).',
+    '- read_tab: "text" = words from another open tab\'s title, or its URL. You get that tab\'s full content back without leaving this tab (Google Docs/Sheets/Slides included).',
+    '- switch_tab: "text" = words from an open tab\'s title, or its URL. Continue working in that tab.',
+    "Google Docs/Sheets/Slides: the page's \"Visible text\" already holds the file's real content.",
     '- ask: "text" = a short question when you need a fact about the student you were not given (never guess personal facts).',
     '- done: finished or impossible; "reason" is the outcome for the student.',
     'Unused fields are null. "reason" is one short friendly sentence the student sees.',
@@ -253,8 +294,38 @@ export async function runTask(run: TaskRun): Promise<string> {
           await tab.scroll(step.text === "up" ? -700 : 700);
           detail = "Scrolled";
           break;
-        case "read_doc": {
-          const text = await readDoc(step.text ?? "");
+        case "key": {
+          // Enter on a form page can submit it: same rule as clicking the submit button.
+          const combo = step.text ?? "Enter";
+          const formHasSubmit = !snap.docText && snap.elements.some((e) => classifyAction(toTarget("click", e)).category === "submit");
+          if (/enter/i.test(combo) && !allowSubmit && formHasSubmit) {
+            const r = await ask(run, "submit", "Ready to submit?", `Pressing Enter may submit ${clip(snap.title || snap.url, 60)}`, {}, await tab.screenshot());
+            if (r.decision !== "approve") { run.emit({ action: "done", detail: "Stopped before the final step. Everything is filled in and waiting in your tab." }); return "stopped before final step"; }
+            allowSubmit = true;
+          }
+          await tab.key(combo);
+          await tab.settle();
+          detail = `Pressed ${clip(step.text ?? "Enter", 20)}`;
+          break;
+        }
+        case "write": {
+          const text = step.text ?? "";
+          await tab.write(text);
+          await tab.settle();
+          detail = `Wrote ${text.length > 60 ? `${text.length} characters` : `"${text}"`}`;
+          break;
+        }
+        case "switch_tab": {
+          const ref = (step.text ?? "").trim();
+          const hit = /^https?:\/\//i.test(ref) ? { tab: await d.open(ref, "path"), title: ref } : await d.find(keywords(ref));
+          if (!hit) throw new Error(`no open tab matches "${ref}"`);
+          tab = hit.tab;
+          await tab.settle();
+          detail = `Switched to ${clip(hit.title, 60)}`;
+          break;
+        }
+        case "read_tab": {
+          const text = await readOpenTab(d, step.text ?? "", tab);
           notes.push(clip(text, 6000));
           detail = `Read ${clip(text.split("\n")[0], 70)}`;
           break;
@@ -302,10 +373,24 @@ export async function runTask(run: TaskRun): Promise<string> {
         }
       }
       history.push(`${i}. ${step.action} ${step.url ?? ""}${step.index ?? ""} ${clip(step.text ?? "", 80)} → ok (${step.reason})`);
+      lastFail = "";
     } catch (err) {
       const msg = err instanceof Error ? err.message.split("\n")[0] : String(err);
       history.push(`${i}. ${step.action} ${step.index ?? ""} FAILED: ${msg}`);
       detail = `That didn't work (${clip(msg, 80)}). Trying another way.`;
+      if (/Unknown command/i.test(msg) && !warnedOld) {
+        warnedOld = true;
+        run.emit({ action: "info", detail: "Your Northstar Bridge extension is out of date. Reload it in chrome://extensions to unlock this." });
+      }
+      // Never hammer the same failing step: nudge, then give up on it.
+      const key = `${step.action}|${step.index ?? ""}|${step.text ?? ""}|${msg}`;
+      fails = key === lastFail ? fails + 1 : 1;
+      lastFail = key;
+      if (fails === 2) notes.push(`"${step.action}" keeps failing (${clip(msg, 100)}). Do NOT try it again; use a different action or finish with what you have.`);
+      if (fails >= 4) {
+        run.emit({ action: "done", detail: `I got stuck: ${clip(msg, 120)}. Your tab is left as is.` });
+        return `stuck: ${msg}`;
+      }
     }
     run.emit({ action: step.action, detail });
   }

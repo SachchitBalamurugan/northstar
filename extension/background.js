@@ -142,7 +142,7 @@ async function inPage(tabId, func, args = []) {
 function pageSnapshot(maxEls) {
   document.querySelectorAll("[data-sk-idx]").forEach((e) => e.removeAttribute("data-sk-idx"));
   const sel =
-    'a[href],button,input:not([type=hidden]),select,textarea,summary,[contenteditable=""],[contenteditable=true],[role=button],[role=link],[role=tab],[role=checkbox],[role=radio],[role=menuitem],[role=option],[role=combobox],[role=textbox],[onclick]';
+    'a[href],button,input:not([type=hidden]),select,textarea,summary,[contenteditable=""],[contenteditable=true],[role=button],[role=link],[role=tab],[role=checkbox],[role=radio],[role=menuitem],[role=option],[role=combobox],[role=textbox],[onclick],.kix-appview-editor,canvas';
   const out = [];
   const clip = (s, n) => (s || "").replace(/\s+/g, " ").trim().slice(0, n);
   for (const el of document.querySelectorAll(sel)) {
@@ -151,6 +151,8 @@ function pageSnapshot(maxEls) {
     const cs = getComputedStyle(el);
     if (r.width < 1 || r.height < 1 || cs.visibility === "hidden" || cs.display === "none") continue;
     const tag = el.tagName.toLowerCase();
+    if (tag === "canvas" && (r.width < 200 || r.height < 150)) continue;
+    const isDocArea = el.classList.contains("kix-appview-editor");
     const idx = out.length;
     el.setAttribute("data-sk-idx", String(idx));
     const lab =
@@ -165,8 +167,9 @@ function pageSnapshot(maxEls) {
     const options = tag === "select" ? [...el.options].slice(0, 15).map((o) => clip(o.text, 40)) : undefined;
     out.push({
       index: idx, tag, type,
-      role: el.getAttribute("role") || (el.isContentEditable ? "textbox" : ""),
-      text: clip(txt, 80), label: clip(lab, 80),
+      role: el.getAttribute("role") || (el.isContentEditable || isDocArea ? "textbox" : tag === "canvas" ? "canvas" : ""),
+      text: isDocArea || tag === "canvas" ? "" : clip(txt, 80),
+      label: isDocArea ? "Document editing area (click here, then use write/key)" : tag === "canvas" ? clip(lab || "Drawing/editor canvas", 80) : clip(lab, 80),
       name: clip(el.getAttribute("name") || el.id || "", 40),
       autocomplete: el.getAttribute("autocomplete") || "",
       href: tag === "a" ? clip(el.getAttribute("href"), 120) : "",
@@ -259,6 +262,132 @@ function pageScroll(dy) {
   return Math.round(scrollY);
 }
 
+// Google Docs / Sheets / Slides draw on a canvas, so their text is not in the page. Ask the open file for
+// its own plain-text export instead (same origin, your existing login; no API or extra permission).
+async function pageDocText(maxLen) {
+  const m = location.pathname.match(/\/(document|spreadsheets|presentation)\/d\/([\w-]+)/);
+  if (!m || location.hostname !== "docs.google.com") return null;
+  const kind = m[1], id = m[2];
+  const gid = (location.hash.match(/gid=(\d+)/) || location.search.match(/gid=(\d+)/) || [])[1];
+  const url =
+    kind === "document" ? `/document/d/${id}/export?format=txt` :
+    kind === "spreadsheets" ? `/spreadsheets/d/${id}/export?format=csv${gid ? `&gid=${gid}` : ""}` :
+    `/presentation/d/${id}/export/txt`;
+  try {
+    const r = await fetch(url, { credentials: "include" });
+    if (!r.ok) return { __error: `Could not export this file (HTTP ${r.status})` };
+    const t = (await r.text()).replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
+    return { kind, title: document.title.replace(/ - Google (Docs|Sheets|Slides)$/, ""), text: t.slice(0, maxLen), truncated: t.length > maxLen };
+  } catch (e) {
+    return { __error: String((e && e.message) || e) };
+  }
+}
+
+function pageRect(index) {
+  const el = document.querySelector(`[data-sk-idx="${index}"]`);
+  if (!el) return { __error: `Element ${index} is gone; take a new look at the page` };
+  el.scrollIntoView({ block: "center", inline: "center" });
+  const r = el.getBoundingClientRect();
+  // Big areas (a document canvas): click near the top-left of the text, not the middle of the page.
+  const big = r.height > innerHeight * 0.6;
+  const x = big ? r.left + Math.min(r.width / 2, 200) : r.left + r.width / 2;
+  const y = big ? Math.max(r.top, 0) + 120 : r.top + r.height / 2;
+  return { x: Math.round(x), y: Math.round(y), tag: el.tagName, editable: el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable };
+}
+
+function pageSelectAll(index) {
+  const el = document.querySelector(`[data-sk-idx="${index}"]`);
+  if (!el) return false;
+  if (el.select) { el.focus(); el.select(); return true; }
+  if (el.isContentEditable) {
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    const s = getSelection();
+    s.removeAllRanges();
+    s.addRange(r);
+    return true;
+  }
+  return false;
+}
+
+// ---- real input through chrome.debugger (attached only while a Northstar task runs) ----
+const attached = new Set();
+chrome.debugger.onDetach.addListener((src) => attached.delete(src.tabId));
+
+async function attachDbg(tabId) {
+  if (attached.has(tabId)) return;
+  await chrome.debugger.attach({ tabId }, "1.3");
+  attached.add(tabId);
+}
+async function cdp(tabId, method, params = {}) {
+  await attachDbg(tabId);
+  return chrome.debugger.sendCommand({ tabId }, method, params);
+}
+async function detachAll() {
+  for (const tabId of [...attached]) await chrome.debugger.detach({ tabId }).catch(() => {});
+  attached.clear();
+}
+
+async function realClick(tabId, x, y) {
+  await cdp(tabId, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+  await cdp(tabId, "Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
+  await cdp(tabId, "Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+}
+
+const KEYS = {
+  enter: { key: "Enter", code: "Enter", vk: 13, text: "\r" }, tab: { key: "Tab", code: "Tab", vk: 9 },
+  escape: { key: "Escape", code: "Escape", vk: 27 }, esc: { key: "Escape", code: "Escape", vk: 27 },
+  backspace: { key: "Backspace", code: "Backspace", vk: 8 }, delete: { key: "Delete", code: "Delete", vk: 46 },
+  home: { key: "Home", code: "Home", vk: 36 }, end: { key: "End", code: "End", vk: 35 },
+  pageup: { key: "PageUp", code: "PageUp", vk: 33 }, pagedown: { key: "PageDown", code: "PageDown", vk: 34 },
+  arrowup: { key: "ArrowUp", code: "ArrowUp", vk: 38 }, arrowdown: { key: "ArrowDown", code: "ArrowDown", vk: 40 },
+  arrowleft: { key: "ArrowLeft", code: "ArrowLeft", vk: 37 }, arrowright: { key: "ArrowRight", code: "ArrowRight", vk: 39 },
+  up: { key: "ArrowUp", code: "ArrowUp", vk: 38 }, down: { key: "ArrowDown", code: "ArrowDown", vk: 40 },
+  left: { key: "ArrowLeft", code: "ArrowLeft", vk: 37 }, right: { key: "ArrowRight", code: "ArrowRight", vk: 39 },
+  space: { key: " ", code: "Space", vk: 32, text: " " },
+};
+
+/** "ctrl+End", "Enter", "shift+Tab", "ctrl+a" */
+async function realKey(tabId, combo) {
+  const parts = String(combo).split("+").map((p) => p.trim()).filter(Boolean);
+  const keyName = parts.pop() || "";
+  let mods = 0;
+  for (const m of parts.map((p) => p.toLowerCase()))
+    mods |= m === "alt" ? 1 : m === "ctrl" || m === "control" ? 2 : m === "meta" || m === "cmd" ? 4 : m === "shift" ? 8 : 0;
+  let k = KEYS[keyName.toLowerCase()];
+  if (!k && keyName.length === 1) {
+    const up = keyName.toUpperCase();
+    k = { key: keyName, code: /[A-Z]/.test(up) ? `Key${up}` : /[0-9]/.test(up) ? `Digit${up}` : "", vk: up.charCodeAt(0), text: mods & ~8 ? undefined : keyName };
+  }
+  if (!k) throw new Error(`Unknown key "${keyName}"`);
+  const base = { modifiers: mods, key: k.key, code: k.code, windowsVirtualKeyCode: k.vk };
+  await cdp(tabId, "Input.dispatchKeyEvent", { type: k.text ? "keyDown" : "rawKeyDown", ...base, ...(k.text ? { text: k.text } : {}) });
+  await cdp(tabId, "Input.dispatchKeyEvent", { type: "keyUp", ...base });
+}
+
+async function realType(tabId, index, text, enter) {
+  const r = await inPage(tabId, pageRect, [index]);
+  await realClick(tabId, r.x, r.y);
+  await sleep(60);
+  if (r.editable) {
+    // Replace what is there: select it all, then insert (Delete clears it when the new text is empty).
+    if (!(await inPage(tabId, pageSelectAll, [index]))) await realKey(tabId, "ctrl+a");
+    if (!text) await realKey(tabId, "Delete");
+  }
+  if (text) await cdp(tabId, "Input.insertText", { text });
+  if (enter) await realKey(tabId, "Enter");
+}
+
+/** Real input when possible; the synthetic events if the debugger can't attach (e.g. DevTools is open on the tab). */
+async function tryReal(fn, fallback) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (!fallback) throw err;
+    return fallback();
+  }
+}
+
 // ---------------- commands ----------------
 
 async function handle(cmd, a) {
@@ -288,12 +417,46 @@ async function handle(cmd, a) {
       return tabInfo(await chrome.tabs.get(a.tabId));
     case "tabs.waitLoad":
       return tabInfo(await waitLoad(a.tabId, a.timeoutMs));
-    case "page.snapshot":
-      return inPage(a.tabId, pageSnapshot, [a.maxEls || 80]);
+    case "page.snapshot": {
+      const snap = await inPage(a.tabId, pageSnapshot, [a.maxEls || 80]);
+      // Google Docs/Sheets/Slides: the real content comes from the file's own text export.
+      const doc = await inPage(a.tabId, pageDocText, [8000]).catch(() => null);
+      if (doc && doc.text !== undefined) {
+        snap.docText = true;
+        snap.text = `[Google ${doc.kind} content${doc.truncated ? ", first part" : ""}]\n${doc.text}`;
+      }
+      return snap;
+    }
+    case "page.text": {
+      const doc = await inPage(a.tabId, pageDocText, [a.maxLen || 20000]).catch(() => null);
+      if (doc && doc.text !== undefined) return { title: doc.title, kind: doc.kind, text: doc.text, truncated: doc.truncated };
+      const page = await inPage(a.tabId, (n) => ({ title: document.title, text: (document.body ? document.body.innerText : "").replace(/\n{3,}/g, "\n\n").trim().slice(0, n) }), [a.maxLen || 20000]);
+      return { ...page, kind: "page" };
+    }
     case "page.click":
-      return inPage(a.tabId, pageClick, [a.index]);
+      if (a.real === false) return inPage(a.tabId, pageClick, [a.index]);
+      return tryReal(async () => {
+        await inPage(a.tabId, (i) => { const el = document.querySelector(`[data-sk-idx="${i}"]`); if (el && el.tagName === "A") el.removeAttribute("target"); return true; }, [a.index]);
+        const r = await inPage(a.tabId, pageRect, [a.index]);
+        await realClick(a.tabId, r.x, r.y);
+        return true;
+      }, () => inPage(a.tabId, pageClick, [a.index]));
     case "page.type":
-      return inPage(a.tabId, pageType, [a.index, String(a.text ?? ""), !!a.enter]);
+      if (a.real === false) return inPage(a.tabId, pageType, [a.index, String(a.text ?? ""), !!a.enter]);
+      return tryReal(
+        () => realType(a.tabId, a.index, String(a.text ?? ""), !!a.enter).then(() => true),
+        () => inPage(a.tabId, pageType, [a.index, String(a.text ?? ""), !!a.enter]),
+      );
+    case "page.write":
+      // Insert text wherever the cursor is (Google Docs and other editors). Real input only.
+      await cdp(a.tabId, "Input.insertText", { text: String(a.text ?? "") });
+      return true;
+    case "page.key":
+      await realKey(a.tabId, a.key);
+      return true;
+    case "debugger.release":
+      await detachAll();
+      return true;
     case "page.select":
       return inPage(a.tabId, pageSelect, [a.index, String(a.value ?? "")]);
     case "page.scroll":

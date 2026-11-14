@@ -27,6 +27,8 @@ export interface Snapshot {
   elements: SnapEl[];
   text: string;
   scroll?: { y: number; max: number };
+  /** True when `text` is a Google Docs/Sheets/Slides file's own content. */
+  docText?: boolean;
 }
 export interface TabInfo {
   title: string;
@@ -44,6 +46,12 @@ export interface Tab {
   screenshot(): Promise<string | undefined>;
   settle(): Promise<void>;
   focus(): Promise<void>;
+  /** Insert text at the cursor (Google Docs and other editors). */
+  write(text: string): Promise<void>;
+  /** Press a key or combo: "Enter", "Tab", "ctrl+End". */
+  key(combo: string): Promise<void>;
+  /** The full readable content (a Google Doc/Sheet/Slide's own text, or the page text). */
+  readText(): Promise<{ title: string; text: string; kind: string }>;
 }
 
 export interface Driver {
@@ -57,6 +65,8 @@ export interface Driver {
   /** The open tab whose title/url contains most of the keywords. */
   find(keywords: string[]): Promise<(TabInfo & { tab: Tab }) | null>;
   list(): Promise<TabInfo[]>;
+  /** Let go of anything held during a task (the extension's debugger connection). */
+  release(): Promise<void>;
 }
 
 // ---------------- the student's own Chrome (extension) ----------------
@@ -102,6 +112,15 @@ class ChromeTab implements Tab {
   async focus() {
     await bridgeCall("tabs.focus", { tabId: this.id }).catch(() => {});
   }
+  async write(text: string) {
+    await bridgeCall("page.write", { tabId: this.id, text });
+  }
+  async key(combo: string) {
+    await bridgeCall("page.key", { tabId: this.id, key: combo });
+  }
+  readText() {
+    return bridgeCall<{ title: string; text: string; kind: string }>("page.text", { tabId: this.id, maxLen: 20000 });
+  }
 }
 
 const words = (s: string) => s.toLowerCase();
@@ -137,6 +156,9 @@ const chromeDriver: Driver = {
   },
   async list() {
     return (await bridgeCall<ExtTab[]>("tabs.list")).map((t) => ({ title: t.title, url: t.url }));
+  },
+  async release() {
+    await bridgeCall("debugger.release").catch(() => {});
   },
 };
 
@@ -181,6 +203,19 @@ class PwTab implements Tab {
   async focus() {
     await this.page.bringToFront().catch(() => {});
   }
+  async write(text: string) {
+    await this.page.keyboard.insertText(text);
+  }
+  async key(combo: string) {
+    const map: Record<string, string> = { ctrl: "Control", control: "Control", alt: "Alt", shift: "Shift", meta: "Meta", cmd: "Meta", esc: "Escape", up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight" };
+    const keys = combo.split("+").map((k) => k.trim()).filter(Boolean).map((k) => map[k.toLowerCase()] ?? (k.length === 1 ? k : k[0].toUpperCase() + k.slice(1)));
+    await this.page.keyboard.press(keys.join("+"));
+  }
+  async readText() {
+    const title = await this.page.title().catch(() => "");
+    const text = await this.page.evaluate(() => (document.body ? document.body.innerText : "").replace(/\n{3,}/g, "\n\n").trim().slice(0, 20000));
+    return { title, text, kind: "page" };
+  }
 }
 
 const pwDriver: Driver = {
@@ -206,6 +241,7 @@ const pwDriver: Driver = {
     return { title: hit.title, url: hit.url, tab: new PwTab(hit.page) };
   },
   list: () => pwListTabs(),
+  async release() {},
 };
 
 /** Your own Chrome when the extension is connected, else the separate Northstar window. */
